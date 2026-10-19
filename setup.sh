@@ -2,28 +2,37 @@
 set -euo pipefail
 PROJECT="$HOME/AutoWIFI"
 if [[ ! -d "$PROJECT" ]]; then
-  printf 'Missing AutoWIFI checkout at %s\n' "$PROJECT" >&2
+  echo "Missing AutoWIFI checkout: $PROJECT" >&2
   exit 1
 fi
-if ! command -v pipx >/dev/null 2>&1; then
-  echo 'pipx not found. Install with: sudo apt install pipx' >&2
-  exit 1
-fi
+command -v pipx >/dev/null || { echo "Install pipx first: sudo apt install pipx"; exit 1; }
 if [[ ! -w "$PROJECT" ]]; then
-  printf 'You do not own/write %s. Fix ownership? [y/N] ' "$PROJECT"
+  printf 'Fix ownership of %s? [y/N] ' "$PROJECT"
   read -r answer
-  if [[ "$answer" =~ ^[Yy]$ ]]; then
-    sudo chown -R "$(id -un):$(id -gn)" "$PROJECT"
-  else
-    echo 'Stopped without changing permissions.' >&2
-    exit 1
-  fi
+  [[ "$answer" =~ ^[Yy]$ ]] || exit 1
+  sudo chown -R "$(id -un):$(id -gn)" "$PROJECT"
 fi
 cd "$PROJECT"
+# Patch the outdated MCP stdio entry point in the locally cloned AutoWIFI.
+python3 - <<'PY'
+from pathlib import Path
+p = Path("autowifi/mcp_server.py")
+s = p.read_text()
+old_import = "from mcp.server.stdio import run_stdio"
+old_call = "asyncio.run(run_stdio(server))"
+if old_import in s and old_call in s:
+    s = s.replace(old_import, "from mcp.server.stdio import stdio_server")
+    s = s.replace(old_call, """async def serve():
+        async with stdio_server() as (read_stream, write_stream):
+            await server.run(read_stream, write_stream, server.create_initialization_options())
+    asyncio.run(serve())""")
+    p.write_text(s)
+    print("Patched AutoWIFI MCP stdio compatibility.")
+elif "from mcp.server.stdio import stdio_server" in s:
+    print("MCP patch already present.")
+else:
+    raise SystemExit("Unexpected AutoWIFI MCP source; refusing to modify it.")
+PY
 pipx install --force '.[mcp]'
 pipx list
-if command -v autowifi-mcp >/dev/null 2>&1; then
-  command -v autowifi-mcp
-else
-  echo 'No autowifi-mcp command found; check package entry points.'
-fi
+echo "Installation complete. MCP entry point: $(command -v autowifi-mcp || echo missing)"
