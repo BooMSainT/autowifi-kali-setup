@@ -34,5 +34,7 @@ else:
     raise SystemExit("Unexpected AutoWIFI MCP source; refusing to modify it.")
 PY
 pipx install --force '.[mcp]'
+# AutoWIFI uses the MCP 1.x Server decorator API; 2.x removed it.
+pipx inject --force autowifi 'mcp>=1,<2'
 pipx list
 echo "Installation complete. MCP entry point: $(command -v autowifi-mcp || echo missing)"
