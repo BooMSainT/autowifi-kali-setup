@@ -72,8 +72,14 @@ cat > "$CONFIG_DIR/mcphost.json" <<'JSON'
 {
   "mcpServers": {
     "autowifi": {
-      "command": "/home/user/.local/bin/autowifi-mcp",
-      "args": []
+      "command": "sudo",
+      "args": [
+        "-n",
+        "env",
+        "HOME=/home/user",
+        "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+        "/home/user/.local/bin/autowifi-mcp"
+      ]
     }
   }
 }
@@ -115,11 +121,15 @@ temperature="${AUTOWIFI_AI_TEMPERATURE:-0.2}"
 [[ "$max_tokens" =~ ^[0-9]+$ ]] || { echo "Invalid token limit." >&2; exit 1; }
 command -v mcphost >/dev/null || { echo "mcphost is not installed." >&2; exit 1; }
 command -v ollama >/dev/null || { echo "ollama is not installed." >&2; exit 1; }
+command -v sudo >/dev/null || { echo "sudo is not installed." >&2; exit 1; }
 ollama show "$model" >/dev/null 2>&1 || {
   echo "Model $model is not installed." >&2
   echo "Install it with: ollama pull $model" >&2
   exit 1
 }
+
+echo "AutoWIFI needs elevated access for monitor mode and wireless tools."
+sudo -v
 
 echo "Warming $model..."
 curl -fsS http://127.0.0.1:11434/api/generate \
@@ -233,7 +243,11 @@ temperature="${AUTOWIFI_AI_TEMPERATURE:-0.2}"
 [[ "$max_tokens" =~ ^[0-9]+$ ]] || { echo "Invalid token limit." >&2; exit 1; }
 command -v mcphost >/dev/null || { echo "mcphost is not installed." >&2; exit 1; }
 command -v ollama >/dev/null || { echo "ollama is not installed." >&2; exit 1; }
+command -v sudo >/dev/null || { echo "sudo is not installed." >&2; exit 1; }
 ollama show "$model" >/dev/null 2>&1 || { echo "Model $model is not installed." >&2; exit 1; }
+
+echo "AutoWIFI needs elevated access for monitor mode and wireless tools."
+sudo -v
 
 echo "Warming $model..."
 curl -fsS http://127.0.0.1:11434/api/generate \
@@ -287,6 +301,9 @@ command -v autowifi-mcp >/dev/null && echo "MCP server: installed" || {
   echo "MCP server: missing"
   exit 1
 }
+sudo -v
+sudo -n true
+echo "AutoWIFI privilege check: passed"
 if ollama show "$model" >/dev/null 2>&1; then
   echo "Model check: installed"
 else
