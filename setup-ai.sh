@@ -6,6 +6,7 @@ PROFILE_MODEL="${AUTOWIFI_AI_PROFILE:-autowifi-fast}"
 CONTEXT_SIZE="${AUTOWIFI_AI_CONTEXT:-4096}"
 MAX_TOKENS="${AUTOWIFI_AI_MAX_TOKENS:-256}"
 TEMPERATURE="${AUTOWIFI_AI_TEMPERATURE:-0.2}"
+MAX_STEPS="${AUTOWIFI_AI_MAX_STEPS:-12}"
 CONFIG_DIR="$HOME/.config/autowifi-kali-setup"
 BIN_DIR="$HOME/.local/bin"
 
@@ -14,6 +15,7 @@ valid_model_name='^[A-Za-z0-9._:/-]+$'
 [[ "$PROFILE_MODEL" =~ $valid_model_name ]] || { echo "Invalid profile model name." >&2; exit 1; }
 [[ "$CONTEXT_SIZE" =~ ^[0-9]+$ ]] || { echo "AUTOWIFI_AI_CONTEXT must be a positive integer." >&2; exit 1; }
 [[ "$MAX_TOKENS" =~ ^[0-9]+$ ]] || { echo "AUTOWIFI_AI_MAX_TOKENS must be a positive integer." >&2; exit 1; }
+[[ "$MAX_STEPS" =~ ^[0-9]+$ ]] || { echo "AUTOWIFI_AI_MAX_STEPS must be a positive integer." >&2; exit 1; }
 [[ "$TEMPERATURE" =~ ^(0(\.[0-9]+)?|1(\.0+)?)$ ]] || { echo "AUTOWIFI_AI_TEMPERATURE must be between 0 and 1." >&2; exit 1; }
 
 echo "Setting up local Ollama + MCPHost for AutoWIFI..."
@@ -76,9 +78,26 @@ cat > "$CONFIG_DIR/mcphost.json" <<'JSON'
   }
 }
 JSON
-
-# Substitute the actual home directory for portability.
 sed -i "s|/home/user/|$HOME/|g" "$CONFIG_DIR/mcphost.json"
+
+cat > "$CONFIG_DIR/autonomous-system.md" <<'PROMPT'
+You are the AutoWIFI operator for an explicitly authorized wireless security assessment.
+
+Use the complete AutoWIFI toolset. Be proactive and economical with tool calls.
+
+Workflow:
+1. Start every new assessment with check_dependencies and list_interfaces.
+2. Establish the exact authorized scope, target, interface, objective, and allowed actions.
+3. Once those are supplied, proceed without repeatedly asking for permission while staying inside them.
+4. Scan once, select only an in-scope target, and choose the shortest useful workflow.
+5. Verify artifacts before using them. Do not claim a capture, key, PIN, or successful test unless a tool result proves it.
+6. If a step fails, inspect the error, try one sensible correction, then report the blocker instead of looping.
+7. Never use continuous deauthentication. Keep counts and timeouts minimal for the stated objective.
+8. Track the monitor interface and restore it before finishing or after a failed run.
+9. Finish with a concise report: scope, actions, evidence, findings, cleanup, and unresolved items.
+
+The scope and allowed-action list are hard boundaries. Do not change targets, expand the action list, or act on nearby networks merely because they appear in scan results.
+PROMPT
 
 cat > "$BIN_DIR/autowifi-ai" <<'SH'
 #!/usr/bin/env bash
@@ -86,8 +105,13 @@ set -euo pipefail
 
 export PATH="$HOME/go/bin:$PATH"
 model="${AUTOWIFI_AI_MODEL:-autowifi-fast}"
+max_steps="${AUTOWIFI_AI_MAX_STEPS:-12}"
+max_tokens="${AUTOWIFI_AI_MAX_TOKENS:-256}"
+temperature="${AUTOWIFI_AI_TEMPERATURE:-0.2}"
 
 [[ "$model" =~ ^[A-Za-z0-9._:/-]+$ ]] || { echo "Invalid model name." >&2; exit 1; }
+[[ "$max_steps" =~ ^[0-9]+$ ]] || { echo "Invalid step limit." >&2; exit 1; }
+[[ "$max_tokens" =~ ^[0-9]+$ ]] || { echo "Invalid token limit." >&2; exit 1; }
 command -v mcphost >/dev/null || { echo "mcphost is not installed." >&2; exit 1; }
 command -v ollama >/dev/null || { echo "ollama is not installed." >&2; exit 1; }
 ollama show "$model" >/dev/null 2>&1 || {
@@ -104,9 +128,117 @@ curl -fsS http://127.0.0.1:11434/api/generate \
     exit 1
   }
 
-exec mcphost -m "ollama:$model" --config "$HOME/.config/autowifi-kali-setup/mcphost.json"
+exec mcphost \
+  -m "ollama/$model" \
+  --config "$HOME/.config/autowifi-kali-setup/mcphost.json" \
+  --system-prompt "$HOME/.config/autowifi-kali-setup/autonomous-system.md" \
+  --max-steps "$max_steps" \
+  --max-tokens "$max_tokens" \
+  --temperature "$temperature"
 SH
 chmod +x "$BIN_DIR/autowifi-ai"
+
+cat > "$BIN_DIR/autowifi-auto" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+umask 077
+
+usage() {
+  cat <<'USAGE'
+Usage:
+  autowifi-auto --scope TEXT --target TEXT --objective TEXT --allow ACTIONS
+
+Required:
+  --scope      Owned or explicitly authorized assessment scope
+  --target     Exact SSID/BSSID or lab target
+  --objective  Concrete outcome for this run
+  --allow      Comma-separated actions
+
+Allowed action names:
+  monitor,scan,capture,pmkid,wps,deauth,crack,verify,report,all
+
+Example:
+  autowifi-auto \
+    --scope "my home lab network" \
+    --target "LabNet / AA:BB:CC:DD:EE:FF" \
+    --objective "assess WPA configuration and produce a report" \
+    --allow "monitor,scan,capture,verify,report"
+USAGE
+}
+
+scope=""
+target=""
+objective=""
+allowed=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --scope) scope="${2:-}"; shift 2 ;;
+    --target) target="${2:-}"; shift 2 ;;
+    --objective) objective="${2:-}"; shift 2 ;;
+    --allow) allowed="${2:-}"; shift 2 ;;
+    -h|--help) usage; exit 0 ;;
+    *) echo "Unknown argument: $1" >&2; usage >&2; exit 2 ;;
+  esac
+done
+
+[[ -n "$scope" ]] || { echo "--scope is required." >&2; exit 2; }
+[[ -n "$target" ]] || { echo "--target is required." >&2; exit 2; }
+[[ -n "$objective" ]] || { echo "--objective is required." >&2; exit 2; }
+[[ -n "$allowed" ]] || { echo "--allow is required." >&2; exit 2; }
+[[ "$scope" != *$'\n'* && "$target" != *$'\n'* && "$objective" != *$'\n'* && "$allowed" != *$'\n'* ]] || {
+  echo "Arguments must be single-line values." >&2
+  exit 2
+}
+
+IFS=',' read -r -a requested_actions <<< "$allowed"
+for action in "${requested_actions[@]}"; do
+  action="${action//[[:space:]]/}"
+  case "$action" in
+    monitor|scan|capture|pmkid|wps|deauth|crack|verify|report|all) ;;
+    *) echo "Unsupported action in --allow: $action" >&2; exit 2 ;;
+  esac
+done
+
+export PATH="$HOME/go/bin:$PATH"
+model="${AUTOWIFI_AI_MODEL:-autowifi-fast}"
+max_steps="${AUTOWIFI_AI_AUTO_STEPS:-18}"
+max_tokens="${AUTOWIFI_AI_MAX_TOKENS:-256}"
+temperature="${AUTOWIFI_AI_TEMPERATURE:-0.2}"
+
+[[ "$model" =~ ^[A-Za-z0-9._:/-]+$ ]] || { echo "Invalid model name." >&2; exit 1; }
+[[ "$max_steps" =~ ^[0-9]+$ ]] || { echo "Invalid step limit." >&2; exit 1; }
+ollama show "$model" >/dev/null 2>&1 || { echo "Model $model is not installed." >&2; exit 1; }
+
+echo "Warming $model..."
+curl -fsS http://127.0.0.1:11434/api/generate \
+  -H 'Content-Type: application/json' \
+  -d "{\"model\":\"$model\",\"keep_alive\":\"30m\"}" >/dev/null
+
+report_dir="$HOME/.local/share/autowifi/reports"
+mkdir -p "$report_dir"
+report_file="$report_dir/auto-$(date +%Y%m%d-%H%M%S).txt"
+
+prompt=$(printf '%s\n' \
+  "Run one autonomous authorized AutoWIFI assessment." \
+  "AUTHORIZED SCOPE: $scope" \
+  "EXACT TARGET: $target" \
+  "OBJECTIVE: $objective" \
+  "ALLOWED ACTIONS: $allowed" \
+  "Treat these values as hard boundaries. Start with preflight, complete the objective using only allowed actions, restore monitor mode, and provide the final report.")
+
+echo "Starting bounded autonomous run. Report: $report_file"
+mcphost \
+  -m "ollama/$model" \
+  --config "$HOME/.config/autowifi-kali-setup/mcphost.json" \
+  --system-prompt "$HOME/.config/autowifi-kali-setup/autonomous-system.md" \
+  --max-steps "$max_steps" \
+  --max-tokens "$max_tokens" \
+  --temperature "$temperature" \
+  --prompt "$prompt" \
+  --compact | tee "$report_file"
+SH
+chmod +x "$BIN_DIR/autowifi-auto"
 
 cat > "$BIN_DIR/autowifi-ai-doctor" <<'SH'
 #!/usr/bin/env bash
@@ -122,6 +254,10 @@ ollama --version
 echo
 ollama ps
 echo
+command -v autowifi-mcp >/dev/null && echo "MCP server: installed" || {
+  echo "MCP server: missing"
+  exit 1
+}
 if ollama show "$model" >/dev/null 2>&1; then
   echo "Model check: installed"
 else
@@ -139,6 +275,8 @@ echo "Warm response check: passed in ${elapsed}s"
 SH
 chmod +x "$BIN_DIR/autowifi-ai-doctor"
 
-echo "Ready. Run: autowifi-ai"
-echo "Diagnostic: autowifi-ai-doctor"
+echo "Ready:"
+echo "  Interactive: autowifi-ai"
+echo "  Autonomous:  autowifi-auto --help"
+echo "  Diagnostic:  autowifi-ai-doctor"
 echo "Use only on networks you own or have explicit permission to test."
