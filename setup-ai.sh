@@ -140,7 +140,7 @@ curl -fsS http://127.0.0.1:11434/api/generate \
   }
 
 exec mcphost \
-  -m "ollama/$model" \
+  -m "ollama:$model" \
   --config "$HOME/.config/autowifi-kali-setup/mcphost.json" \
   --system-prompt "$HOME/.config/autowifi-kali-setup/autonomous-system.md" \
   --max-steps "$max_steps" \
@@ -272,7 +272,7 @@ prompt=$(printf '%s\n' \
 
 echo "Starting bounded autonomous run. Report: $report_file"
 mcphost \
-  -m "ollama/$model" \
+  -m "ollama:$model" \
   --config "$HOME/.config/autowifi-kali-setup/mcphost.json" \
   --system-prompt "$HOME/.config/autowifi-kali-setup/autonomous-system.md" \
   --max-steps "$max_steps" \
@@ -326,7 +326,7 @@ echo
 echo "Testing MCPHost agent creation without using wireless tools..."
 if mcphost \
   --debug \
-  -m "ollama/$model" \
+  -m "ollama:$model" \
   --config "$HOME/.config/autowifi-kali-setup/mcphost.json" \
   --system-prompt "Do not call tools. Reply with READY only." \
   --max-steps 1 \
