@@ -12,22 +12,45 @@ bash setup.sh
 
 Review the script before running it. Do not run it as root.
 
-## Install the local AI
+## Install the optimized local AI
 
 ```bash
 bash setup-ai.sh
 autowifi-ai
 ```
 
-The default model is `qwen2.5:1.5b`, selected for faster responses on CPU-only Kali laptops. The setup also keeps the model loaded longer and limits the Ollama context to reduce repeated startup and prompt-processing delays.
+The setup creates an `autowifi-fast` Ollama profile based on `qwen2.5:1.5b` with:
 
-For better answers on a faster machine, install and select the larger model:
+- a 4096-token context for MCP tool definitions and normal conversation;
+- a 256-token response limit to prevent slow, wandering answers;
+- low temperature for more direct tool decisions;
+- an explicit 30-minute warm-up on every launch, even when Ollama was already running.
+
+The first launch still has to load the model into memory. Later prompts during the keep-alive window should avoid that load delay.
+
+## Check performance
+
+```bash
+autowifi-ai-doctor
+```
+
+The diagnostic reports CPU threads, memory, loaded Ollama models, and the time for a small warm response. It does not invoke AutoWIFI tools or touch a wireless interface.
+
+## Change the balance
+
+Use the larger model for better answers on a faster machine:
 
 ```bash
 ollama pull qwen2.5:3b
 AUTOWIFI_AI_MODEL=qwen2.5:3b autowifi-ai
 ```
 
-You can select any already-installed Ollama model with `AUTOWIFI_AI_MODEL`. The launcher checks that the chosen model exists before starting.
+Rebuild the optimized profile with different limits:
+
+```bash
+AUTOWIFI_AI_CONTEXT=3072 AUTOWIFI_AI_MAX_TOKENS=192 bash setup-ai.sh
+```
+
+Lower values are faster and use less memory, but overly small limits can reduce tool reliability. The default profile is the recommended balance for a CPU-only Kali laptop.
 
 Use AutoWIFI only on networks you own or have explicit permission to test.
