@@ -51,6 +51,18 @@ The setup creates an `autowifi-fast` Ollama profile based on `qwen2.5:1.5b` with
 
 The first launch still loads the model into memory. Later prompts during the keep-alive window should avoid that delay.
 
+When you launch `autowifi-ai` or `autowifi-auto`, it asks for your Kali password once. MCPHost and Ollama continue under your normal account; the AutoWIFI MCP process receives elevated access so monitor mode and wireless tools can work.
+
+If you previously saw a monitor-mode or agent-creation failure, refresh the generated configuration:
+
+```bash
+cd ~/autowifi-kali-setup
+git pull
+bash setup-ai.sh
+autowifi-ai-doctor
+autowifi-ai
+```
+
 ## Run one autonomous assessment
 
 The autonomous command requires a scope, exact target, objective, and allowed actions. Those values remain hard boundaries for the run.
