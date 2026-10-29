@@ -1,16 +1,38 @@
 # AutoWIFI Kali setup
 
-Installs the local `~/AutoWIFI` checkout with pipx and provides an optional local AI interface through Ollama and MCPHost.
+Installs a local `~/AutoWIFI` checkout with pipx and adds an optional local AI operator through Ollama and MCPHost. The complete AutoWIFI MCP toolset remains available.
+
+Use AutoWIFI only on networks you own or have explicit permission to test.
 
 ## Install AutoWIFI
 
+Clone the AutoWIFI source and this setup repository, then run the local setup script:
+
 ```bash
+git clone https://github.com/momenbasel/AutoWIFI.git ~/AutoWIFI
 git clone https://github.com/BooMSainT/autowifi-kali-setup.git
 cd autowifi-kali-setup
 bash setup.sh
 ```
 
-Review the script before running it. Do not run it as root.
+Review the scripts before running them. Do not run them as root. The setup fixes AutoWIFI's current MCP stdio and wordlist-discovery compatibility issues before installing it with pipx.
+
+## Add the Kali wordlist
+
+This optional helper installs Kali's `wordlists` package and prepares an uncompressed, user-owned copy of `rockyou.txt`:
+
+```bash
+bash setup-wordlists.sh
+bash setup.sh
+```
+
+The prepared file is stored at:
+
+```text
+~/.local/share/autowifi/wordlists/rockyou.txt
+```
+
+Running `setup.sh` again makes the installed AutoWIFI MCP server discover that path. You can also provide any readable, uncompressed wordlist directly to an autonomous run.
 
 ## Install the optimized local AI
 
@@ -21,12 +43,57 @@ autowifi-ai
 
 The setup creates an `autowifi-fast` Ollama profile based on `qwen2.5:1.5b` with:
 
-- a 4096-token context for MCP tool definitions and normal conversation;
-- a 256-token response limit to prevent slow, wandering answers;
-- low temperature for more direct tool decisions;
-- an explicit 30-minute warm-up on every launch, even when Ollama was already running.
+- a 4096-token context for MCP tool definitions and conversation;
+- a 256-token response limit for direct tool decisions;
+- low temperature for repeatable choices;
+- a 30-minute model keep-alive on launch;
+- a system prompt that preflights, verifies artifacts, retries one sensible correction, restores monitor mode, and reports results.
 
-The first launch still has to load the model into memory. Later prompts during the keep-alive window should avoid that load delay.
+The first launch still loads the model into memory. Later prompts during the keep-alive window should avoid that delay.
+
+## Run one autonomous assessment
+
+The autonomous command requires a scope, exact target, objective, and allowed actions. Those values remain hard boundaries for the run.
+
+```bash
+autowifi-auto \
+  --scope "my home lab network" \
+  --target "LabNet / AA:BB:CC:DD:EE:FF" \
+  --objective "verify a captured handshake and test it with my wordlist" \
+  --allow "monitor,scan,capture,verify,wordlist,crack,report" \
+  --wordlist auto
+```
+
+Use an exact wordlist instead of automatic discovery:
+
+```bash
+autowifi-auto \
+  --scope "my home lab network" \
+  --target "LabNet / AA:BB:CC:DD:EE:FF" \
+  --objective "test the verified capture with the supplied candidates" \
+  --allow "monitor,scan,capture,verify,crack,report" \
+  --wordlist "$HOME/my-wordlists/lab-passwords.txt"
+```
+
+Available action names are:
+
+```text
+monitor,scan,capture,pmkid,wps,deauth,wordlist,crack,verify,report,all
+```
+
+With `--wordlist auto`, the agent calls AutoWIFI's `find_wordlists` tool before a crack action and selects an uncompressed discovered list. It prefers a smaller practical list first to avoid a long, unnecessary run. Compressed `.gz` files are rejected until prepared by `setup-wordlists.sh`.
+
+Each autonomous run saves its output under:
+
+```text
+~/.local/share/autowifi/reports/
+```
+
+See all options with:
+
+```bash
+autowifi-auto --help
+```
 
 ## Check performance
 
@@ -36,9 +103,9 @@ autowifi-ai-doctor
 
 The diagnostic reports CPU threads, memory, loaded Ollama models, and the time for a small warm response. It does not invoke AutoWIFI tools or touch a wireless interface.
 
-## Change the balance
+## Change the speed and quality balance
 
-Use the larger model for better answers on a faster machine:
+Use the larger model for better decisions on a faster machine:
 
 ```bash
 ollama pull qwen2.5:3b
@@ -51,6 +118,4 @@ Rebuild the optimized profile with different limits:
 AUTOWIFI_AI_CONTEXT=3072 AUTOWIFI_AI_MAX_TOKENS=192 bash setup-ai.sh
 ```
 
-Lower values are faster and use less memory, but overly small limits can reduce tool reliability. The default profile is the recommended balance for a CPU-only Kali laptop.
-
-Use AutoWIFI only on networks you own or have explicit permission to test.
+Lower values are faster and use less memory. Values that are too small can reduce tool reliability. The default profile is the recommended balance for a CPU-only Kali laptop.
