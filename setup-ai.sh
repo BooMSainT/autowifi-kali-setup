@@ -297,10 +297,13 @@ ollama --version
 echo
 ollama ps
 echo
-command -v autowifi-mcp >/dev/null && echo "MCP server: installed" || {
+mcp_entry=$(command -v autowifi-mcp || true)
+[[ -n "$mcp_entry" ]] && echo "MCP server: $mcp_entry" || {
   echo "MCP server: missing"
   exit 1
 }
+echo "MCP interpreter: $(head -n 1 "$mcp_entry")"
+echo "MCPHost: $(mcphost --version 2>&1 | head -n 1)"
 sudo -v
 sudo -n true
 echo "AutoWIFI privilege check: passed"
@@ -318,6 +321,25 @@ curl -fsS http://127.0.0.1:11434/api/generate \
   >/dev/null
 elapsed=$(( $(date +%s) - start ))
 echo "Warm response check: passed in ${elapsed}s"
+
+echo
+echo "Testing MCPHost agent creation without using wireless tools..."
+if mcphost \
+  --debug \
+  -m "ollama/$model" \
+  --config "$HOME/.config/autowifi-kali-setup/mcphost.json" \
+  --system-prompt "Do not call tools. Reply with READY only." \
+  --max-steps 1 \
+  --max-tokens 32 \
+  --temperature 0 \
+  --prompt "Reply with READY only." \
+  --compact; then
+  echo "MCPHost agent creation check: passed"
+else
+  status=$?
+  echo "MCPHost agent creation check: failed with exit code $status" >&2
+  exit "$status"
+fi
 SH
 chmod +x "$BIN_DIR/autowifi-ai-doctor"
 
