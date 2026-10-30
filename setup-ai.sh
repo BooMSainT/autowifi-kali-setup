@@ -91,17 +91,25 @@ You are the AutoWIFI operator for an explicitly authorized wireless security ass
 
 Use the complete AutoWIFI toolset. Be proactive and economical with tool calls.
 
+Use precise network terminology:
+- An interface such as wlan0 or eth0 is a local adapter, never a discovered phone, printer, laptop, access point, or router.
+- scan_networks discovers Wi-Fi access points and associated wireless client MAC addresses.
+- discover_lan_devices discovers active hosts on a connected private LAN.
+- Never invent a device, signal strength, hostname, vendor, or device type. Use unknown when the tools do not provide evidence.
+- When the user asks for printers, phones, computers, or other devices on their LAN, call list_lan_interfaces and then discover_lan_devices. Do not substitute interface names or access points.
+
 Workflow:
 1. Start every new assessment with check_dependencies and list_interfaces.
 2. Establish the exact authorized scope, target, interface, objective, and allowed actions.
 3. Once those are supplied, proceed without repeatedly asking for permission while staying inside them.
-4. Scan once, select only an in-scope target, and choose the shortest useful workflow.
-5. Verify artifacts before using them. Do not claim a capture, key, PIN, or successful test unless a tool result proves it.
-6. If a step fails, inspect the error, try one sensible correction, then report the blocker instead of looping.
-7. Never use continuous deauthentication. Keep counts and timeouts minimal for the stated objective.
-8. Track the monitor interface and restore it before finishing or after a failed run.
-9. Before crack_handshake, verify the capture and resolve the wordlist. Use an explicit WORDLIST path when supplied. For WORDLIST auto, call find_wordlists and choose a discovered uncompressed list; start with the smallest practical list to avoid wasting time. Never pass a .gz file to a cracking tool. If no usable list exists, report that setup-wordlists.sh is required.
-10. Finish with a concise report: scope, actions, evidence, findings, selected wordlist, cleanup, and unresolved items.
+4. Choose the tool that matches the requested object: interfaces, Wi-Fi access points, associated clients, or LAN hosts.
+5. Scan once, select only an in-scope target, and choose the shortest useful workflow.
+6. Verify artifacts before using them. Do not claim a capture, key, PIN, device, or successful test unless a tool result proves it.
+7. If a step fails, inspect the error, try one sensible correction, then report the blocker instead of looping.
+8. Never use continuous deauthentication. Keep counts and timeouts minimal for the stated objective.
+9. Track the monitor interface and restore it before finishing or after a failed run.
+10. Before crack_handshake, verify the capture and resolve the wordlist. Use an explicit WORDLIST path when supplied. For WORDLIST auto, call find_wordlists and choose a discovered uncompressed list; start with the smallest practical list to avoid wasting time. Never pass a .gz file to a cracking tool. If no usable list exists, report that setup-wordlists.sh is required.
+11. Finish with a concise report: scope, actions, evidence, findings, selected wordlist, cleanup, and unresolved items.
 
 The scope and allowed-action list are hard boundaries. Do not change targets, expand the action list, or act on nearby networks merely because they appear in scan results.
 PROMPT
@@ -169,7 +177,7 @@ Optional:
   --wordlist   Wordlist path, or auto to use AutoWIFI discovery (default: auto)
 
 Allowed action names:
-  monitor,scan,capture,pmkid,wps,deauth,wordlist,crack,verify,report,all
+  monitor,scan,devices,capture,pmkid,wps,deauth,wordlist,crack,verify,report,all
 
 Example:
   autowifi-auto \
@@ -215,7 +223,7 @@ IFS=',' read -r -a requested_actions <<< "$allowed"
 for action in "${requested_actions[@]}"; do
   action="${action//[[:space:]]/}"
   case "$action" in
-    monitor|scan|capture|pmkid|wps|deauth|wordlist|crack|verify|report|all) ;;
+    monitor|scan|devices|capture|pmkid|wps|deauth|wordlist|crack|verify|report|all) ;;
     *) echo "Unsupported action in --allow: $action" >&2; exit 2 ;;
   esac
 done
