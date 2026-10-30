@@ -322,10 +322,30 @@ mcp_entry="$(command -v autowifi-mcp || true)"
   exit 1
 }
 
-python_path="$(head -n 1 "$mcp_entry")"
-python_path="${python_path#\#!}"
-[[ "$python_path" == /* && -x "$python_path" ]] || {
-  echo "Could not find AutoWIFI's Python interpreter from: $mcp_entry" >&2
+resolved_entry="$(readlink -f -- "$mcp_entry" 2>/dev/null || realpath "$mcp_entry" 2>/dev/null || printf '%s' "$mcp_entry")"
+venv_bin="$(dirname -- "$resolved_entry")"
+python_path=""
+for candidate in "$venv_bin/python" "$venv_bin/python3"; do
+  if [[ -x "$candidate" ]]; then
+    python_path="$candidate"
+    break
+  fi
+done
+
+if [[ -z "$python_path" ]]; then
+  shebang="$(head -n 1 "$resolved_entry" 2>/dev/null || true)"
+  shebang="${shebang#\#!}"
+  shebang="${shebang#"${shebang%%[![:space:]]*}"}"
+  if [[ "$shebang" == /* && -x "$shebang" ]]; then
+    python_path="$shebang"
+  fi
+fi
+
+[[ -n "$python_path" ]] || {
+  echo "Could not find AutoWIFI's pipx Python interpreter." >&2
+  echo "MCP entry point: $mcp_entry" >&2
+  echo "Resolved entry point: $resolved_entry" >&2
+  echo "Repair it with: cd ~/autowifi-kali-setup && bash setup.sh" >&2
   exit 1
 }
 
