@@ -72,7 +72,28 @@ autowifi-ai
 
 ## Discover devices on your LAN
 
-### Short commands
+### Reliable code words
+
+Start the direct command console:
+
+```bash
+autowifi-console
+```
+
+Then type a code word such as:
+
+```text
+nearby
+devices
+networks
+interfaces
+wordlists
+quit
+```
+
+The common scan and read codes call AutoWIFI directly. They do not ask the local language model to decide whether to run a tool, so their output comes from the scanner instead of an AI-generated template. Type `chat` in the console when you want the full freeform AI operator.
+
+You can also run each code directly from the terminal.
 
 Nearby wireless clients sorted by observed signal power:
 
@@ -92,7 +113,7 @@ Discover active hosts on your connected private LAN:
 autowifi-devices
 ```
 
-Inside `autowifi-ai`, the code words `nearby`, `nearby TARGET`, and `devices` run the same workflows.
+`autowifi-ai` remains available for freeform requests and longer autonomous workflows. Small local models can sometimes answer with text instead of invoking a tool, so use `autowifi-console` or `autowifi-quick` when you need a direct scan result.
 
 For the complete shortcut list:
 
