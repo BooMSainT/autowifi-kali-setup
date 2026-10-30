@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 BASE_MODEL="${AUTOWIFI_AI_BASE_MODEL:-qwen2.5:1.5b}"
 PROFILE_MODEL="${AUTOWIFI_AI_PROFILE:-autowifi-fast}"
 CONTEXT_SIZE="${AUTOWIFI_AI_CONTEXT:-4096}"
@@ -57,6 +58,7 @@ fi
 ollama pull "$BASE_MODEL"
 
 mkdir -p "$CONFIG_DIR" "$BIN_DIR"
+install -m 0644 "$SCRIPT_DIR/extensions/quick_scan.py" "$CONFIG_DIR/quick_scan.py"
 
 cat > "$CONFIG_DIR/Modelfile.fast" <<EOF
 FROM $BASE_MODEL
@@ -310,21 +312,47 @@ mcphost \
 SH
 chmod +x "$BIN_DIR/autowifi-auto"
 
+cat > "$BIN_DIR/autowifi-direct" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+
+mcp_entry="$(command -v autowifi-mcp || true)"
+[[ -n "$mcp_entry" ]] || {
+  echo "autowifi-mcp is missing; run bash setup.sh first." >&2
+  exit 1
+}
+
+python_path="$(head -n 1 "$mcp_entry")"
+python_path="${python_path#\#!}"
+[[ "$python_path" == /* && -x "$python_path" ]] || {
+  echo "Could not find AutoWIFI's Python interpreter from: $mcp_entry" >&2
+  exit 1
+}
+
+sudo -v
+exec sudo -n env \
+  HOME="$HOME" \
+  PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
+  "$python_path" \
+  "$HOME/.config/autowifi-kali-setup/quick_scan.py" \
+  "$@"
+SH
+chmod +x "$BIN_DIR/autowifi-direct"
+
 cat > "$BIN_DIR/autowifi-nearby" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
 
-target="${*:-all nearby Wi-Fi access points and associated wireless clients}"
-[[ "$target" != *$'\n'* && "$target" != *$'\r'* ]] || {
-  echo "Target must be a single-line value." >&2
-  exit 2
-}
-
-exec "$HOME/.local/bin/autowifi-auto" \
-  --scope "passive observation from my authorized local Wi-Fi assessment location" \
-  --target "$target" \
-  --objective "scan for 60 seconds; print access points and associated wireless clients sorted by observed power from strongest to weakest; report dBm as relative signal strength; do not estimate exact distance; restore managed mode" \
-  --allow "monitor,scan,report"
+args=(nearby)
+if [[ $# -gt 0 ]]; then
+  target="$*"
+  [[ "$target" != *$'\n'* && "$target" != *$'\r'* ]] || {
+    echo "Target must be a single-line value." >&2
+    exit 2
+  }
+  args+=(--target "$target")
+fi
+exec "$HOME/.local/bin/autowifi-direct" "${args[@]}"
 SH
 chmod +x "$BIN_DIR/autowifi-nearby"
 
@@ -332,17 +360,7 @@ cat > "$BIN_DIR/autowifi-devices" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
 
-target="${*:-my default directly connected private LAN}"
-[[ "$target" != *$'\n'* && "$target" != *$'\r'* ]] || {
-  echo "Target must be a single-line value." >&2
-  exit 2
-}
-
-exec "$HOME/.local/bin/autowifi-auto" \
-  --scope "my directly connected authorized private LAN" \
-  --target "$target" \
-  --objective "discover active LAN hosts and print IP, MAC, hostname, vendor, and evidence-based device type; do not call an interface a device and do not guess missing fields" \
-  --allow "devices,report"
+exec "$HOME/.local/bin/autowifi-direct" devices "$@"
 SH
 chmod +x "$BIN_DIR/autowifi-devices"
 
@@ -371,8 +389,9 @@ AutoWIFI quick codes
 
 Usage:
   autowifi-quick CODE [TARGET OR FILE]
+  autowifi-console
 
-The same words work inside autowifi-ai.
+The console runs common scan and read codes directly, without waiting for AI.
 CODES
 SH
 chmod +x "$BIN_DIR/autowifi-codes"
@@ -417,19 +436,13 @@ case "$code" in
     exec "$bin_dir/autowifi-ai-doctor"
     ;;
   check)
-    run_auto "this Kali computer" "local AutoWIFI installation" \
-      "check dependencies and list wireless and LAN interfaces; distinguish interfaces from devices" \
-      "dependencies,interfaces,report"
+    exec "$bin_dir/autowifi-direct" check
     ;;
   interfaces)
-    run_auto "this Kali computer" "local interfaces" \
-      "list wireless and LAN interfaces with their modes and connected networks; do not call interfaces devices" \
-      "interfaces,report"
+    exec "$bin_dir/autowifi-direct" interfaces
     ;;
   networks)
-    run_auto "passive observation from my authorized local Wi-Fi assessment location" "nearby Wi-Fi access points" \
-      "scan for 30 seconds, sort access points by observed power from strongest to weakest, report evidence, and restore managed mode" \
-      "interfaces,monitor,scan,report"
+    exec "$bin_dir/autowifi-direct" networks
     ;;
   nearby)
     exec "$bin_dir/autowifi-nearby" "$@"
@@ -440,9 +453,7 @@ case "$code" in
   clients)
     require_value "$@"
     target="$*"
-    run_auto "my authorized local Wi-Fi assessment" "$target" \
-      "scan for 60 seconds and report only clients associated with the supplied SSID or BSSID, sorted by observed power; never estimate exact distance; restore managed mode" \
-      "interfaces,monitor,scan,report"
+    exec "$bin_dir/autowifi-direct" nearby --target "$target"
     ;;
   audit|recommend)
     require_value "$@"
@@ -480,17 +491,15 @@ case "$code" in
       "dependencies,interfaces,monitor,scan,deauth,report"
     ;;
   wordlists)
-    run_auto "this Kali computer" "installed wordlists" \
-      "discover installed wordlists and report path, name, and size; do not start a crack" \
-      "wordlist,report"
+    exec "$bin_dir/autowifi-direct" wordlists
     ;;
   verify)
     require_value "$@"
     capture_file="$1"
-    bssid="${2:-not supplied}"
-    run_auto "local capture verification" "$capture_file" \
-      "verify this capture file; expected BSSID: $bssid; report the tool result without starting a crack" \
-      "verify,report"
+    if [[ -n "${2:-}" ]]; then
+      exec "$bin_dir/autowifi-direct" verify "$capture_file" --bssid "$2"
+    fi
+    exec "$bin_dir/autowifi-direct" verify "$capture_file"
     ;;
   crack)
     require_value "$@"
@@ -528,6 +537,57 @@ case "$code" in
 esac
 SH
 chmod +x "$BIN_DIR/autowifi-quick"
+
+cat > "$BIN_DIR/autowifi-console" <<'SH'
+#!/usr/bin/env bash
+set -u
+
+bin_dir="$HOME/.local/bin"
+cat <<'INTRO'
+AutoWIFI command console
+Type help for codes, chat for the AI operator, or quit to exit.
+INTRO
+
+while true; do
+  IFS= read -r -p "autowifi> " line || break
+  line="${line#"${line%%[![:space:]]*}"}"
+  line="${line%"${line##*[![:space:]]}"}"
+  [[ -n "$line" ]] || continue
+
+  code="${line%%[[:space:]]*}"
+  if [[ "$line" == "$code" ]]; then
+    rest=""
+  else
+    rest="${line#"$code"}"
+    rest="${rest#"${rest%%[![:space:]]*}"}"
+  fi
+
+  normalized_code="$(printf '%s' "$code" | tr '[:upper:]' '[:lower:]')"
+  case "$normalized_code" in
+    quit|exit)
+      break
+      ;;
+    chat|ai)
+      "$bin_dir/autowifi-ai"
+      ;;
+    help|codes)
+      "$bin_dir/autowifi-codes"
+      ;;
+    *)
+      if [[ -n "$rest" ]]; then
+        "$bin_dir/autowifi-quick" "$code" "$rest"
+      else
+        "$bin_dir/autowifi-quick" "$code"
+      fi
+      ;;
+  esac
+  status=$?
+  if [[ $status -ne 0 ]]; then
+    echo "Command failed with exit code $status." >&2
+  fi
+done
+SH
+chmod +x "$BIN_DIR/autowifi-console"
 
 cat > "$BIN_DIR/autowifi-ai-doctor" <<'SH'
 #!/usr/bin/env bash
@@ -590,7 +650,8 @@ SH
 chmod +x "$BIN_DIR/autowifi-ai-doctor"
 
 echo "Ready:"
-echo "  Interactive: autowifi-ai"
+echo "  Code words:  autowifi-console"
+echo "  AI chat:     autowifi-ai"
 echo "  Autonomous:  autowifi-auto --help"
 echo "  Nearby:      autowifi-nearby [SSID or BSSID]"
 echo "  LAN devices: autowifi-devices"
