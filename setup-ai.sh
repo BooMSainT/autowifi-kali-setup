@@ -99,9 +99,22 @@ Use precise network terminology:
 - When the user asks for printers, phones, computers, or other devices on their LAN, call list_lan_interfaces and then discover_lan_devices. Do not substitute interface names or access points.
 
 Shortcut phrases are case-insensitive:
-- `nearby` means: list wireless interfaces, select the usable Wi-Fi adapter, enable monitor mode, scan for 60 seconds, print access points and associated client stations sorted by observed power from strongest to weakest, then restore managed mode. Report dBm as relative signal strength and never claim exact distance.
-- `nearby TARGET` runs the same workflow but reports only the supplied SSID or BSSID.
-- `devices` means: list connected LAN interfaces, run discover_lan_devices on the default directly connected private subnet, and print IP, MAC, hostname, vendor, and evidence-based device type.
+- `check`: check dependencies and list interfaces.
+- `interfaces`: list local wireless and LAN interfaces without calling them devices.
+- `networks`: scan Wi-Fi access points for 30 seconds, sort by power, and restore managed mode.
+- `nearby`: scan for 60 seconds, print access points and associated client stations sorted by observed power, and restore managed mode.
+- `nearby TARGET` or `clients TARGET`: run the same client scan but report only the supplied SSID or BSSID.
+- `devices`: discover LAN hosts and print IP, MAC, hostname, vendor, and evidence-based device type.
+- `audit TARGET`: scan the supplied SSID or BSSID and recommend applicable tests without launching an attack.
+- `handshake TARGET`: capture and verify a WPA handshake for the supplied authorized SSID or BSSID, then restore managed mode.
+- `pmkid TARGET`: attempt one PMKID capture against the supplied authorized target, report the artifact, and restore managed mode.
+- `wps TARGET`: run the WPS Pixie Dust test against the supplied authorized WPS target and report evidence.
+- `deauth5 TARGET`: send exactly 5 deauthentication frames to the supplied authorized lab target, never continuously, then restore managed mode.
+- `wordlists`: discover installed wordlists and report their paths and sizes.
+- `verify FILE [BSSID]`: verify a capture file and report the result.
+- `crack FILE [WORDLIST]`: test a verified capture with the supplied wordlist, or automatically discover one when omitted.
+- `restore [INTERFACE]`: restore a monitor-mode interface to managed mode.
+- `report`: summarize the current session's evidence and unresolved items.
 - When a shortcut is received, execute its workflow instead of explaining what the word means.
 
 Workflow:
@@ -183,7 +196,7 @@ Optional:
   --wordlist   Wordlist path, or auto to use AutoWIFI discovery (default: auto)
 
 Allowed action names:
-  monitor,scan,devices,capture,pmkid,wps,deauth,wordlist,crack,verify,report,all
+  dependencies,interfaces,monitor,scan,devices,recommend,capture,pmkid,wps,deauth,wordlist,crack,verify,report,all
 
 Example:
   autowifi-auto \
@@ -229,7 +242,7 @@ IFS=',' read -r -a requested_actions <<< "$allowed"
 for action in "${requested_actions[@]}"; do
   action="${action//[[:space:]]/}"
   case "$action" in
-    monitor|scan|devices|capture|pmkid|wps|deauth|wordlist|crack|verify|report|all) ;;
+    dependencies|interfaces|monitor|scan|devices|recommend|capture|pmkid|wps|deauth|wordlist|crack|verify|report|all) ;;
     *) echo "Unsupported action in --allow: $action" >&2; exit 2 ;;
   esac
 done
@@ -333,6 +346,189 @@ exec "$HOME/.local/bin/autowifi-auto" \
 SH
 chmod +x "$BIN_DIR/autowifi-devices"
 
+cat > "$BIN_DIR/autowifi-codes" <<'SH'
+#!/usr/bin/env bash
+cat <<'CODES'
+AutoWIFI quick codes
+
+  check                         Dependencies and interfaces
+  interfaces                    Wireless and LAN interfaces
+  networks                      Wi-Fi access points sorted by power
+  nearby [SSID/BSSID]           Nearby wireless clients sorted by power
+  devices                       Active hosts on your private LAN
+  clients SSID/BSSID            Clients associated with one target
+  audit SSID/BSSID              Scan and recommend applicable tests
+  handshake SSID/BSSID          Capture and verify a WPA handshake
+  pmkid SSID/BSSID              Attempt one PMKID capture
+  wps SSID/BSSID                Run the WPS Pixie Dust test
+  deauth5 SSID/BSSID            Send exactly 5 frames, never continuously
+  wordlists                     List discovered wordlists
+  verify CAPTURE [BSSID]        Verify a handshake capture
+  crack CAPTURE [WORDLIST]      Test a verified capture
+  restore [INTERFACE]           Restore managed mode
+  reports                       List saved autonomous reports
+  health                        Run the AI diagnostic
+
+Usage:
+  autowifi-quick CODE [TARGET OR FILE]
+
+The same words work inside autowifi-ai.
+CODES
+SH
+chmod +x "$BIN_DIR/autowifi-codes"
+
+cat > "$BIN_DIR/autowifi-quick" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+
+bin_dir="$HOME/.local/bin"
+code="${1:-help}"
+if [[ $# -gt 0 ]]; then
+  shift
+fi
+code=$(printf '%s' "$code" | tr '[:upper:]' '[:lower:]')
+
+require_value() {
+  if [[ $# -eq 0 || -z "${1:-}" ]]; then
+    echo "$code requires a target or file. Run: autowifi-codes" >&2
+    exit 2
+  fi
+}
+
+run_auto() {
+  local scope="$1"
+  local target="$2"
+  local objective="$3"
+  local allowed="$4"
+  local wordlist="${5:-auto}"
+  exec "$bin_dir/autowifi-auto" \
+    --scope "$scope" \
+    --target "$target" \
+    --objective "$objective" \
+    --allow "$allowed" \
+    --wordlist "$wordlist"
+}
+
+case "$code" in
+  help|codes)
+    exec "$bin_dir/autowifi-codes"
+    ;;
+  health|doctor)
+    exec "$bin_dir/autowifi-ai-doctor"
+    ;;
+  check)
+    run_auto "this Kali computer" "local AutoWIFI installation" \
+      "check dependencies and list wireless and LAN interfaces; distinguish interfaces from devices" \
+      "dependencies,interfaces,report"
+    ;;
+  interfaces)
+    run_auto "this Kali computer" "local interfaces" \
+      "list wireless and LAN interfaces with their modes and connected networks; do not call interfaces devices" \
+      "interfaces,report"
+    ;;
+  networks)
+    run_auto "passive observation from my authorized local Wi-Fi assessment location" "nearby Wi-Fi access points" \
+      "scan for 30 seconds, sort access points by observed power from strongest to weakest, report evidence, and restore managed mode" \
+      "interfaces,monitor,scan,report"
+    ;;
+  nearby)
+    exec "$bin_dir/autowifi-nearby" "$@"
+    ;;
+  devices)
+    exec "$bin_dir/autowifi-devices" "$@"
+    ;;
+  clients)
+    require_value "$@"
+    target="$*"
+    run_auto "my authorized local Wi-Fi assessment" "$target" \
+      "scan for 60 seconds and report only clients associated with the supplied SSID or BSSID, sorted by observed power; never estimate exact distance; restore managed mode" \
+      "interfaces,monitor,scan,report"
+    ;;
+  audit|recommend)
+    require_value "$@"
+    target="$*"
+    run_auto "my authorized wireless security assessment" "$target" \
+      "scan the supplied SSID or BSSID, report evidence, and recommend applicable AutoWIFI tests without launching an attack; restore managed mode" \
+      "dependencies,interfaces,monitor,scan,recommend,report"
+    ;;
+  handshake)
+    require_value "$@"
+    target="$*"
+    run_auto "my authorized wireless security assessment" "$target" \
+      "capture and verify one WPA handshake for the supplied target, report the artifact path and verification result, and restore managed mode" \
+      "dependencies,interfaces,monitor,scan,capture,verify,report"
+    ;;
+  pmkid)
+    require_value "$@"
+    target="$*"
+    run_auto "my authorized wireless security assessment" "$target" \
+      "attempt one PMKID capture against the supplied target, report only tool-proven evidence and the artifact path, and restore managed mode" \
+      "dependencies,interfaces,monitor,scan,pmkid,report"
+    ;;
+  wps)
+    require_value "$@"
+    target="$*"
+    run_auto "my authorized wireless security assessment" "$target" \
+      "run the WPS Pixie Dust test against the supplied WPS-enabled target, report only tool-proven evidence, and restore managed mode" \
+      "dependencies,interfaces,monitor,scan,wps,report"
+    ;;
+  deauth5)
+    require_value "$@"
+    target="$*"
+    run_auto "my authorized isolated wireless lab" "$target" \
+      "send exactly 5 deauthentication frames to the supplied target, never use continuous mode, report the result, and restore managed mode" \
+      "dependencies,interfaces,monitor,scan,deauth,report"
+    ;;
+  wordlists)
+    run_auto "this Kali computer" "installed wordlists" \
+      "discover installed wordlists and report path, name, and size; do not start a crack" \
+      "wordlist,report"
+    ;;
+  verify)
+    require_value "$@"
+    capture_file="$1"
+    bssid="${2:-not supplied}"
+    run_auto "local capture verification" "$capture_file" \
+      "verify this capture file; expected BSSID: $bssid; report the tool result without starting a crack" \
+      "verify,report"
+    ;;
+  crack)
+    require_value "$@"
+    capture_file="$1"
+    wordlist="${2:-auto}"
+    run_auto "my authorized offline capture assessment" "$capture_file" \
+      "verify the capture, then test it with the selected wordlist and report attempts and result" \
+      "wordlist,verify,crack,report" "$wordlist"
+    ;;
+  restore)
+    target="${*:-any local interface currently in monitor mode}"
+    run_auto "this Kali computer" "$target" \
+      "restore the supplied monitor interface, or the detected monitor interface, to managed mode and report the final interface state" \
+      "interfaces,monitor,report"
+    ;;
+  reports)
+    report_dir="$HOME/.local/share/autowifi/reports"
+    if [[ ! -d "$report_dir" ]]; then
+      echo "No report directory exists yet: $report_dir"
+      exit 0
+    fi
+    shopt -s nullglob
+    reports=("$report_dir"/*)
+    if [[ ${#reports[@]} -eq 0 ]]; then
+      echo "No reports found in: $report_dir"
+      exit 0
+    fi
+    ls -1t -- "${reports[@]}"
+    ;;
+  *)
+    echo "Unknown code: $code" >&2
+    "$bin_dir/autowifi-codes" >&2
+    exit 2
+    ;;
+esac
+SH
+chmod +x "$BIN_DIR/autowifi-quick"
+
 cat > "$BIN_DIR/autowifi-ai-doctor" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -398,5 +594,6 @@ echo "  Interactive: autowifi-ai"
 echo "  Autonomous:  autowifi-auto --help"
 echo "  Nearby:      autowifi-nearby [SSID or BSSID]"
 echo "  LAN devices: autowifi-devices"
+echo "  Quick codes: autowifi-codes"
 echo "  Diagnostic:  autowifi-ai-doctor"
 echo "Use only on networks you own or have explicit permission to test."
