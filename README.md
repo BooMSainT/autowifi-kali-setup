@@ -17,6 +17,13 @@ bash setup.sh
 
 Review the scripts before running them. Do not run them as root. The setup fixes AutoWIFI's current MCP stdio and wordlist-discovery compatibility issues before installing it with pipx.
 
+The setup also installs `nmap` and adds two MCP tools for real LAN host discovery:
+
+- `list_lan_interfaces` lists adapters and connected IPv4 networks;
+- `discover_lan_devices` discovers responding computers, phones, printers, and other hosts on a directly connected private subnet.
+
+Interfaces such as `wlan0` are reported as adapters. AutoWIFI does not label an interface as a discovered device. Device types remain `unknown` unless a hostname provides evidence.
+
 ## Add the Kali wordlist
 
 This optional helper installs Kali's `wordlists` package and prepares an uncompressed, user-owned copy of `rockyou.txt`:
@@ -63,6 +70,22 @@ autowifi-ai-doctor
 autowifi-ai
 ```
 
+## Discover devices on your LAN
+
+Start the interactive operator:
+
+```bash
+autowifi-ai
+```
+
+Then ask:
+
+```text
+List my connected LAN interfaces, discover active devices on my directly connected private network, and show IP, MAC, hostname, vendor and evidence-based device type. Do not call an interface a device and do not guess missing fields.
+```
+
+This uses a bounded `nmap -sn` host-discovery scan. It accepts only a directly connected private IPv4 subnet and limits one run to 4096 addresses.
+
 ## Run one autonomous assessment
 
 The autonomous command requires a scope, exact target, objective, and allowed actions. Those values remain hard boundaries for the run.
@@ -90,7 +113,7 @@ autowifi-auto \
 Available action names are:
 
 ```text
-monitor,scan,capture,pmkid,wps,deauth,wordlist,crack,verify,report,all
+monitor,scan,devices,capture,pmkid,wps,deauth,wordlist,crack,verify,report,all
 ```
 
 With `--wordlist auto`, the agent calls AutoWIFI's `find_wordlists` tool before a crack action and selects an uncompressed discovered list. It prefers a smaller practical list first to avoid a long, unnecessary run. Compressed `.gz` files are rejected until prepared by `setup-wordlists.sh`.
