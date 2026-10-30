@@ -80,18 +80,21 @@ Start the direct command console:
 autowifi-console
 ```
 
-Then type a code word such as:
+Then tell it what you want in normal language:
 
 ```text
-nearby
-devices
-networks
-interfaces
-wordlists
+scan nearby devices and sort them by power
+use wlan2 for monitor mode and keep wlan0 managed
+show devices connected to my LAN
+capture a handshake for MyWiFi
+show my wordlists
+do it
 quit
 ```
 
-The common scan and read codes call AutoWIFI directly. They do not ask the local language model to decide whether to run a tool, so their output comes from the scanner instead of an AI-generated template. Type `chat` in the console when you want the full freeform AI operator.
+The console recognizes common operational requests and runs the matching AutoWIFI command immediately. It remembers the last successful action, so `do it`, `run it`, or `go ahead` repeats it. Known actions bypass the language model, which prevents the model from merely printing example JSON or describing what it intends to do. Open-ended requests automatically fall back to the local AI operator. Type `chat` to enter its full interactive mode.
+
+Short code words still work, including `nearby`, `devices`, `networks`, `interfaces`, `wordlists`, `monitor wlan2`, `managed wlan0`, and `radios wlan2 wlan0`.
 
 You can also run each code directly from the terminal.
 
@@ -132,7 +135,7 @@ autowifi-quick wordlists
 autowifi-quick reports
 ```
 
-Available codes are `check`, `interfaces`, `networks`, `nearby`, `devices`, `clients`, `audit`, `handshake`, `pmkid`, `wps`, `deauth5`, `wordlists`, `verify`, `crack`, `restore`, `reports`, and `health`. Codes that perform a targeted assessment require an exact authorized SSID, BSSID, capture file, or interface.
+Available codes are `check`, `interfaces`, `networks`, `nearby`, `devices`, `clients`, `audit`, `handshake`, `pmkid`, `wps`, `deauth5`, `wordlists`, `monitor`, `managed`, `radios`, `verify`, `crack`, `restore`, `reports`, and `health`. Codes that perform a targeted assessment require an exact authorized SSID, BSSID, capture file, or interface.
 
 Start the interactive operator:
 
