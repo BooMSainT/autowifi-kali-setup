@@ -98,6 +98,12 @@ Use precise network terminology:
 - Never invent a device, signal strength, hostname, vendor, or device type. Use unknown when the tools do not provide evidence.
 - When the user asks for printers, phones, computers, or other devices on their LAN, call list_lan_interfaces and then discover_lan_devices. Do not substitute interface names or access points.
 
+Shortcut phrases are case-insensitive:
+- `nearby` means: list wireless interfaces, select the usable Wi-Fi adapter, enable monitor mode, scan for 60 seconds, print access points and associated client stations sorted by observed power from strongest to weakest, then restore managed mode. Report dBm as relative signal strength and never claim exact distance.
+- `nearby TARGET` runs the same workflow but reports only the supplied SSID or BSSID.
+- `devices` means: list connected LAN interfaces, run discover_lan_devices on the default directly connected private subnet, and print IP, MAC, hostname, vendor, and evidence-based device type.
+- When a shortcut is received, execute its workflow instead of explaining what the word means.
+
 Workflow:
 1. Start every new assessment with check_dependencies and list_interfaces.
 2. Establish the exact authorized scope, target, interface, objective, and allowed actions.
@@ -291,6 +297,42 @@ mcphost \
 SH
 chmod +x "$BIN_DIR/autowifi-auto"
 
+cat > "$BIN_DIR/autowifi-nearby" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+
+target="${*:-all nearby Wi-Fi access points and associated wireless clients}"
+[[ "$target" != *$'\n'* && "$target" != *$'\r'* ]] || {
+  echo "Target must be a single-line value." >&2
+  exit 2
+}
+
+exec "$HOME/.local/bin/autowifi-auto" \
+  --scope "passive observation from my authorized local Wi-Fi assessment location" \
+  --target "$target" \
+  --objective "scan for 60 seconds; print access points and associated wireless clients sorted by observed power from strongest to weakest; report dBm as relative signal strength; do not estimate exact distance; restore managed mode" \
+  --allow "monitor,scan,report"
+SH
+chmod +x "$BIN_DIR/autowifi-nearby"
+
+cat > "$BIN_DIR/autowifi-devices" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+
+target="${*:-my default directly connected private LAN}"
+[[ "$target" != *$'\n'* && "$target" != *$'\r'* ]] || {
+  echo "Target must be a single-line value." >&2
+  exit 2
+}
+
+exec "$HOME/.local/bin/autowifi-auto" \
+  --scope "my directly connected authorized private LAN" \
+  --target "$target" \
+  --objective "discover active LAN hosts and print IP, MAC, hostname, vendor, and evidence-based device type; do not call an interface a device and do not guess missing fields" \
+  --allow "devices,report"
+SH
+chmod +x "$BIN_DIR/autowifi-devices"
+
 cat > "$BIN_DIR/autowifi-ai-doctor" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -354,5 +396,7 @@ chmod +x "$BIN_DIR/autowifi-ai-doctor"
 echo "Ready:"
 echo "  Interactive: autowifi-ai"
 echo "  Autonomous:  autowifi-auto --help"
+echo "  Nearby:      autowifi-nearby [SSID or BSSID]"
+echo "  LAN devices: autowifi-devices"
 echo "  Diagnostic:  autowifi-ai-doctor"
 echo "Use only on networks you own or have explicit permission to test."
