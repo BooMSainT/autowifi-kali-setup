@@ -59,6 +59,7 @@ ollama pull "$BASE_MODEL"
 
 mkdir -p "$CONFIG_DIR" "$BIN_DIR"
 install -m 0644 "$SCRIPT_DIR/extensions/quick_scan.py" "$CONFIG_DIR/quick_scan.py"
+install -m 0644 "$SCRIPT_DIR/extensions/autowifi_operator.py" "$CONFIG_DIR/autowifi_operator.py"
 
 cat > "$CONFIG_DIR/Modelfile.fast" <<EOF
 FROM $BASE_MODEL
@@ -99,6 +100,8 @@ Use precise network terminology:
 - discover_lan_devices discovers active hosts on a connected private LAN.
 - Never invent a device, signal strength, hostname, vendor, or device type. Use unknown when the tools do not provide evidence.
 - When the user asks for printers, phones, computers, or other devices on their LAN, call list_lan_interfaces and then discover_lan_devices. Do not substitute interface names or access points.
+- For an action request, call the appropriate tool immediately. Never print tool-call JSON, function syntax, or a proposed action script as if it ran.
+- Do not ask the user to review steps or say "I will execute" after the user has already requested the action. Execute it and report the tool result.
 
 Shortcut phrases are case-insensitive:
 - `check`: check dependencies and list interfaces.
@@ -144,6 +147,16 @@ model="${AUTOWIFI_AI_MODEL:-autowifi-fast}"
 max_steps="${AUTOWIFI_AI_MAX_STEPS:-12}"
 max_tokens="${AUTOWIFI_AI_MAX_TOKENS:-256}"
 temperature="${AUTOWIFI_AI_TEMPERATURE:-0.2}"
+prompt_args=()
+
+if [[ $# -gt 0 ]]; then
+  query="$*"
+  [[ "$query" != *$'\n'* && "$query" != *$'\r'* ]] || {
+    echo "The request must be a single-line value." >&2
+    exit 2
+  }
+  prompt_args=(--prompt "$query" --compact)
+fi
 
 [[ "$model" =~ ^[A-Za-z0-9._:/-]+$ ]] || { echo "Invalid model name." >&2; exit 1; }
 [[ "$max_steps" =~ ^[0-9]+$ ]] || { echo "Invalid step limit." >&2; exit 1; }
@@ -174,7 +187,8 @@ exec mcphost \
   --system-prompt "$HOME/.config/autowifi-kali-setup/autonomous-system.md" \
   --max-steps "$max_steps" \
   --max-tokens "$max_tokens" \
-  --temperature "$temperature"
+  --temperature "$temperature" \
+  "${prompt_args[@]}"
 SH
 chmod +x "$BIN_DIR/autowifi-ai"
 
@@ -401,6 +415,9 @@ AutoWIFI quick codes
   wps SSID/BSSID                Run the WPS Pixie Dust test
   deauth5 SSID/BSSID            Send exactly 5 frames, never continuously
   wordlists                     List discovered wordlists
+  monitor INTERFACE             Put one adapter in monitor mode
+  managed INTERFACE             Restore one adapter to managed mode
+  radios MONITOR MANAGED        Set two adapters to those modes
   verify CAPTURE [BSSID]        Verify a handshake capture
   crack CAPTURE [WORDLIST]      Test a verified capture
   restore [INTERFACE]           Restore managed mode
@@ -513,6 +530,22 @@ case "$code" in
   wordlists)
     exec "$bin_dir/autowifi-direct" wordlists
     ;;
+  monitor)
+    require_value "$@"
+    exec "$bin_dir/autowifi-direct" monitor "$1"
+    ;;
+  managed)
+    require_value "$@"
+    exec "$bin_dir/autowifi-direct" managed "$1"
+    ;;
+  radios)
+    if [[ $# -lt 2 ]]; then
+      echo "radios requires a monitor interface and a managed interface." >&2
+      echo "Example: autowifi-quick radios wlan2 wlan0" >&2
+      exit 2
+    fi
+    exec "$bin_dir/autowifi-direct" radios --monitor "$1" --managed "$2"
+    ;;
   verify)
     require_value "$@"
     capture_file="$1"
@@ -560,52 +593,13 @@ chmod +x "$BIN_DIR/autowifi-quick"
 
 cat > "$BIN_DIR/autowifi-console" <<'SH'
 #!/usr/bin/env bash
-set -u
+set -euo pipefail
 
-bin_dir="$HOME/.local/bin"
-cat <<'INTRO'
-AutoWIFI command console
-Type help for codes, chat for the AI operator, or quit to exit.
-INTRO
-
-while true; do
-  IFS= read -r -p "autowifi> " line || break
-  line="${line#"${line%%[![:space:]]*}"}"
-  line="${line%"${line##*[![:space:]]}"}"
-  [[ -n "$line" ]] || continue
-
-  code="${line%%[[:space:]]*}"
-  if [[ "$line" == "$code" ]]; then
-    rest=""
-  else
-    rest="${line#"$code"}"
-    rest="${rest#"${rest%%[![:space:]]*}"}"
-  fi
-
-  normalized_code="$(printf '%s' "$code" | tr '[:upper:]' '[:lower:]')"
-  case "$normalized_code" in
-    quit|exit)
-      break
-      ;;
-    chat|ai)
-      "$bin_dir/autowifi-ai"
-      ;;
-    help|codes)
-      "$bin_dir/autowifi-codes"
-      ;;
-    *)
-      if [[ -n "$rest" ]]; then
-        "$bin_dir/autowifi-quick" "$code" "$rest"
-      else
-        "$bin_dir/autowifi-quick" "$code"
-      fi
-      ;;
-  esac
-  status=$?
-  if [[ $status -ne 0 ]]; then
-    echo "Command failed with exit code $status." >&2
-  fi
-done
+command -v python3 >/dev/null || {
+  echo "python3 is missing." >&2
+  exit 1
+}
+exec python3 "$HOME/.config/autowifi-kali-setup/autowifi_operator.py"
 SH
 chmod +x "$BIN_DIR/autowifi-console"
 
