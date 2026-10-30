@@ -72,6 +72,28 @@ autowifi-ai
 
 ## Discover devices on your LAN
 
+### Short commands
+
+Nearby wireless clients sorted by observed signal power:
+
+```bash
+autowifi-nearby
+```
+
+Restrict it to one authorized SSID or BSSID:
+
+```bash
+autowifi-nearby "MyWiFi / AA:BB:CC:DD:EE:FF"
+```
+
+Discover active hosts on your connected private LAN:
+
+```bash
+autowifi-devices
+```
+
+Inside `autowifi-ai`, the code words `nearby`, `nearby TARGET`, and `devices` run the same workflows.
+
 Start the interactive operator:
 
 ```bash
