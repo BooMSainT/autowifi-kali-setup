@@ -94,6 +94,25 @@ autowifi-devices
 
 Inside `autowifi-ai`, the code words `nearby`, `nearby TARGET`, and `devices` run the same workflows.
 
+For the complete shortcut list:
+
+```bash
+autowifi-codes
+```
+
+Run any shortcut directly from the terminal:
+
+```bash
+autowifi-quick networks
+autowifi-quick clients "MyWiFi / AA:BB:CC:DD:EE:FF"
+autowifi-quick audit "MyWiFi / AA:BB:CC:DD:EE:FF"
+autowifi-quick handshake "MyWiFi / AA:BB:CC:DD:EE:FF"
+autowifi-quick wordlists
+autowifi-quick reports
+```
+
+Available codes are `check`, `interfaces`, `networks`, `nearby`, `devices`, `clients`, `audit`, `handshake`, `pmkid`, `wps`, `deauth5`, `wordlists`, `verify`, `crack`, `restore`, `reports`, and `health`. Codes that perform a targeted assessment require an exact authorized SSID, BSSID, capture file, or interface.
+
 Start the interactive operator:
 
 ```bash
@@ -135,7 +154,7 @@ autowifi-auto \
 Available action names are:
 
 ```text
-monitor,scan,devices,capture,pmkid,wps,deauth,wordlist,crack,verify,report,all
+dependencies,interfaces,monitor,scan,devices,recommend,capture,pmkid,wps,deauth,wordlist,crack,verify,report,all
 ```
 
 With `--wordlist auto`, the agent calls AutoWIFI's `find_wordlists` tool before a crack action and selects an uncompressed discovered list. It prefers a smaller practical list first to avoid a long, unnecessary run. Compressed `.gz` files are rejected until prepared by `setup-wordlists.sh`.
