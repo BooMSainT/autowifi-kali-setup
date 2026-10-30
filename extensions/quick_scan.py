@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import argparse
 import re
+import shutil
+import subprocess
 import sys
 
 from autowifi import deps
@@ -16,6 +18,9 @@ from autowifi.cracker import find_wordlists
 from autowifi.handshake import verify_handshake
 from autowifi.lan import discover_lan_devices, list_lan_interfaces
 from autowifi.scanner import NetworkScanner
+
+
+INTERFACE_PATTERN = re.compile(r"^[A-Za-z0-9_.:-]+$")
 
 
 def _power(value: int) -> str:
@@ -46,6 +51,85 @@ def _select_wireless_interface(requested: str):
         raise ValueError(f"Wireless interface {requested!r} was not found. Available: {names}")
     managed = [item for item in interfaces if item.mode.lower() == "managed"]
     return (managed or interfaces)[0]
+
+
+def _interface_by_name(name: str, allow_monitor_suffix: bool = False):
+    if not INTERFACE_PATTERN.fullmatch(name):
+        raise ValueError(f"Invalid interface name: {name!r}")
+    interfaces = wifi_interface.list_interfaces()
+    for item in interfaces:
+        if item.name == name:
+            return item
+    if allow_monitor_suffix:
+        for item in interfaces:
+            if item.name == f"{name}mon":
+                return item
+    names = ", ".join(item.name for item in interfaces) or "none"
+    raise ValueError(f"Wireless interface {name!r} was not found. Available: {names}")
+
+
+def _start_network_services(monitor_interface: str = "") -> None:
+    if monitor_interface and shutil.which("nmcli"):
+        subprocess.run(
+            ["nmcli", "device", "set", monitor_interface, "managed", "no"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+            check=False,
+        )
+    if shutil.which("systemctl"):
+        for service in ("NetworkManager", "wpa_supplicant"):
+            subprocess.run(
+                ["systemctl", "start", service],
+                capture_output=True,
+                text=True,
+                timeout=15,
+                check=False,
+            )
+
+
+def _enable_monitor(interface: str) -> str:
+    selected = _interface_by_name(interface)
+    if selected.mode.lower() == "monitor":
+        print(f"{selected.name} is already in monitor mode.")
+        return selected.name
+    monitor_interface = wifi_interface.enable_monitor(selected.name)
+    if not monitor_interface:
+        raise RuntimeError(f"Failed to enable monitor mode on {selected.name}")
+    print(f"Monitor mode enabled: {selected.name} -> {monitor_interface}")
+    return monitor_interface
+
+
+def _enable_managed(interface: str) -> str:
+    selected = _interface_by_name(interface, allow_monitor_suffix=True)
+    if selected.mode.lower() != "monitor":
+        print(f"{selected.name} is already in managed mode.")
+        return selected.name
+    if not wifi_interface.disable_monitor(selected.name):
+        raise RuntimeError(f"Failed to restore managed mode from {selected.name}")
+    restored_name = interface[:-3] if interface.endswith("mon") else interface
+    print(f"Managed mode restored: {selected.name} -> {restored_name}")
+    return restored_name
+
+
+def _configure_radios(args) -> None:
+    if args.monitor == args.managed:
+        raise ValueError("The monitor and managed interfaces must be different")
+
+    _enable_managed(args.managed)
+    monitor_interface = _enable_monitor(args.monitor)
+    _start_network_services(monitor_interface)
+
+    print()
+    print("FINAL WIRELESS INTERFACE STATE")
+    print("NAME\tMODE\tMAC\tDRIVER\tCHIPSET")
+    for item in wifi_interface.list_interfaces():
+        print(f"{item.name}\t{item.mode}\t{item.mac}\t{item.driver}\t{item.chipset}")
+    print()
+    print(
+        f"Requested state: {args.monitor} monitor; {args.managed} managed. "
+        "The final table above is the verification result."
+    )
 
 
 def _scan_wireless(args, include_clients: bool) -> None:
@@ -186,6 +270,19 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser("check", help="Check AutoWIFI dependencies")
     subparsers.add_parser("wordlists", help="List discovered wordlists")
 
+    monitor = subparsers.add_parser("monitor", help="Put one wireless interface in monitor mode")
+    monitor.add_argument("interface")
+
+    managed = subparsers.add_parser("managed", help="Restore one wireless interface to managed mode")
+    managed.add_argument("interface")
+
+    radios = subparsers.add_parser(
+        "radios",
+        help="Set one wireless interface to monitor and another to managed mode",
+    )
+    radios.add_argument("--monitor", required=True)
+    radios.add_argument("--managed", required=True)
+
     devices = subparsers.add_parser("devices", help="Discover hosts on the private LAN")
     devices.add_argument("--interface", default="")
     devices.add_argument("--subnet", default="")
@@ -213,6 +310,12 @@ def main() -> int:
             _print_devices(args)
         elif args.command == "wordlists":
             _print_wordlists()
+        elif args.command == "monitor":
+            _enable_monitor(args.interface)
+        elif args.command == "managed":
+            _enable_managed(args.interface)
+        elif args.command == "radios":
+            _configure_radios(args)
         elif args.command == "verify":
             _verify_capture(args)
         return 0
