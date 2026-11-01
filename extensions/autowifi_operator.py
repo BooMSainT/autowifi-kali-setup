@@ -14,6 +14,16 @@ from pathlib import Path
 
 BIN_DIR = Path.home() / ".local" / "bin"
 INTERFACE_RE = re.compile(r"\b(?:wlan\d+(?:mon)?|wl[a-zA-Z0-9_.:-]+)\b", re.IGNORECASE)
+BROAD_TARGET_RE = re.compile(
+    r"\b(?:all|any|every)\s+(?:nearby\s+)?networks?\b|"
+    r"\bnetworks?\s+(?:within|in)\s+range\b|"
+    r"\beverything\s+(?:within|in)\s+range\b",
+    re.IGNORECASE,
+)
+ACTIVE_ACTION_RE = re.compile(
+    r"\b(?:handshake|capture|crack|deauth|pmkid|pixie|wps)\b",
+    re.IGNORECASE,
+)
 
 
 HELP = """Natural-language AutoWIFI operator
@@ -61,7 +71,19 @@ def _target_after_keyword(text: str, keyword: str) -> str:
         return ""
     target = text[match.end() :].strip(" :-")
     target = re.sub(r"^(?:for|on|against|from|target)\s+", "", target, flags=re.IGNORECASE)
+    target = re.sub(r"^capture\s+(?:for|on|against|from)\s+", "", target, flags=re.IGNORECASE)
+    target = re.sub(r"^(?:the\s+)?network\s+", "", target, flags=re.IGNORECASE)
+    target = re.split(r"\s+(?:using|with)\s+wlan\w*\b", target, maxsplit=1, flags=re.IGNORECASE)[0]
     return target.strip()
+
+
+def request_problem(text: str) -> str:
+    if ACTIVE_ACTION_RE.search(text) and BROAD_TARGET_RE.search(text):
+        return (
+            "Active capture or password testing requires one exact authorized "
+            "SSID or BSSID. Example: capture a handshake for MyHomeWiFi"
+        )
+    return ""
 
 
 def interpret(text: str) -> list[str] | None:
@@ -178,6 +200,10 @@ def main() -> int:
             command = last_command
             print("Repeating the previous action.")
         else:
+            problem = request_problem(text)
+            if problem:
+                print(problem)
+                continue
             command = interpret(text)
             if not command:
                 continue
