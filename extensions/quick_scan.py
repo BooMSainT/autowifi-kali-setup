@@ -11,11 +11,14 @@ import re
 import shutil
 import subprocess
 import sys
+import time
+from datetime import datetime
+from pathlib import Path
 
 from autowifi import deps
 from autowifi import interface as wifi_interface
 from autowifi.cracker import find_wordlists
-from autowifi.handshake import verify_handshake
+from autowifi.handshake import HandshakeCapture, verify_handshake
 from autowifi.lan import discover_lan_devices, list_lan_interfaces
 from autowifi.scanner import NetworkScanner
 
@@ -49,8 +52,9 @@ def _select_wireless_interface(requested: str):
                 return item
         names = ", ".join(item.name for item in interfaces)
         raise ValueError(f"Wireless interface {requested!r} was not found. Available: {names}")
+    monitor = [item for item in interfaces if item.mode.lower() == "monitor"]
     managed = [item for item in interfaces if item.mode.lower() == "managed"]
-    return (managed or interfaces)[0]
+    return (monitor or managed or interfaces)[0]
 
 
 def _interface_by_name(name: str, allow_monitor_suffix: bool = False):
@@ -193,6 +197,104 @@ def _scan_wireless(args, include_clients: bool) -> None:
             print(f"Managed-mode restore: {'passed' if restored else 'failed'}")
 
 
+def _capture_handshake(args) -> None:
+    selected = _select_wireless_interface(args.interface)
+    monitor_interface = selected.name
+    enabled_here = selected.mode.lower() != "monitor"
+
+    if enabled_here:
+        print(f"Enabling monitor mode on {selected.name}...", flush=True)
+        monitor_interface = wifi_interface.enable_monitor(selected.name)
+        if not monitor_interface:
+            raise RuntimeError(f"Failed to enable monitor mode on {selected.name}")
+
+    capture = None
+    try:
+        print(
+            f"Scanning on {monitor_interface} for exact target {args.target!r} "
+            f"for {args.scan_duration} seconds...",
+            flush=True,
+        )
+        scanner = NetworkScanner(monitor_interface)
+        networks = scanner.scan(duration=args.scan_duration)
+        target_lower = args.target.strip().lower()
+        exact_matches = [
+            network
+            for network in networks
+            if target_lower in {network.essid.lower(), network.bssid.lower()}
+        ]
+        matches = exact_matches or [
+            network
+            for network in networks
+            if _target_matches(args.target, network.essid, network.bssid)
+        ]
+        if not matches:
+            raise RuntimeError(
+                f"Target {args.target!r} was not observed. Check the SSID/BSSID and adapter."
+            )
+        matches.sort(key=lambda network: network.power, reverse=True)
+        network = matches[0]
+        print(
+            f"Selected target: {network.essid or '<hidden>'} | {network.bssid} | "
+            f"channel {network.channel} | {_power(network.power)}",
+            flush=True,
+        )
+
+        safe_target = re.sub(r"[^A-Za-z0-9_.-]+", "_", network.essid or network.bssid)
+        output_dir = (
+            Path.home()
+            / ".local/share/autowifi/captures"
+            / f"{datetime.now():%Y%m%d-%H%M%S-%f}-{safe_target}"
+        )
+        output_dir.mkdir(parents=True, exist_ok=False)
+        capture = HandshakeCapture(
+            monitor_interface,
+            network.bssid,
+            network.channel,
+            str(output_dir),
+        )
+        capture.start()
+        print(f"Capture file: {capture.cap_file}", flush=True)
+        print(
+            "Waiting for a WPA client authentication. Reconnect one authorized "
+            "device to this network while the capture is running.",
+            flush=True,
+        )
+
+        started = time.monotonic()
+        next_update = 10
+        observed = False
+        while time.monotonic() - started < args.timeout:
+            remaining = args.timeout - (time.monotonic() - started)
+            if capture.wait(timeout=max(0.1, min(2.0, remaining))):
+                observed = True
+                break
+            elapsed = int(time.monotonic() - started)
+            if elapsed >= next_update:
+                print(f"Still capturing... {elapsed}s elapsed.", flush=True)
+                next_update += 10
+
+        cap_file = capture.cap_file
+        capture.stop()
+        capture = None
+        valid = observed or verify_handshake(cap_file, network.bssid)
+        size = Path(cap_file).stat().st_size if Path(cap_file).exists() else 0
+        print(f"Capture bytes saved: {size}", flush=True)
+        print(f"Valid WPA handshake: {'yes' if valid else 'no'}", flush=True)
+        if not valid:
+            raise RuntimeError(
+                "No valid WPA handshake was observed before the timeout. "
+                f"The capture was retained at {cap_file}"
+            )
+        print(f"Verified handshake: {cap_file}", flush=True)
+    finally:
+        if capture is not None:
+            capture.stop()
+        if enabled_here and monitor_interface:
+            restored = wifi_interface.disable_monitor(monitor_interface)
+            print(f"Managed-mode restore: {'passed' if restored else 'failed'}", flush=True)
+
+
 def _print_interfaces() -> None:
     print("WIRELESS INTERFACES")
     print("NAME\tMODE\tMAC\tDRIVER\tCHIPSET")
@@ -291,6 +393,15 @@ def build_parser() -> argparse.ArgumentParser:
     verify = subparsers.add_parser("verify", help="Verify a WPA capture")
     verify.add_argument("capture")
     verify.add_argument("--bssid", default="")
+
+    handshake = subparsers.add_parser(
+        "handshake",
+        help="Capture a WPA handshake for one exact authorized SSID or BSSID",
+    )
+    handshake.add_argument("target")
+    handshake.add_argument("--interface", default="")
+    handshake.add_argument("--scan-duration", type=int, default=20, choices=range(10, 121))
+    handshake.add_argument("--timeout", type=int, default=120, choices=range(30, 301))
     return parser
 
 
@@ -318,6 +429,8 @@ def main() -> int:
             _configure_radios(args)
         elif args.command == "verify":
             _verify_capture(args)
+        elif args.command == "handshake":
+            _capture_handshake(args)
         return 0
     except Exception as error:
         print(f"ERROR: {error}", file=sys.stderr)
