@@ -94,9 +94,9 @@ quit
 
 The console recognizes common operational requests and runs the matching AutoWIFI command immediately. It remembers the last successful action, so `do it`, `run it`, or `go ahead` repeats it. Known actions bypass the language model, which prevents the model from merely printing example JSON or describing what it intends to do. Open-ended requests automatically fall back to the local AI operator. Type `chat` to enter its full interactive mode.
 
-While an action runs, the console prints elapsed-time updates every five seconds. It reports when the action completes, fails, or is cancelled with `Ctrl+C`, so a quiet scanner or model does not look frozen.
+Each action opens in a separate Airgeddon-style terminal window. That window shows the exact command, sudo prompt, live tool output, elapsed-time updates, final status, and saved log path. It remains open until you press Enter, while the main `autowifi-console` stays available for another request.
 
-When `autowifi-console` starts, it asks for the Kali password through `sudo` and confirms access before showing the prompt. Later actions reuse the cached authorization. If the sudo cache expires, the next privileged action can prompt again in the same terminal.
+The sudo password prompt appears inside the task window where the privileged command runs. Linux does not display characters or asterisks while the password is entered. Task logs are saved under `~/.local/share/autowifi/tasks/`.
 
 Active capture and password-testing requests require one exact authorized SSID, BSSID, capture file, or lab target. Broad requests such as “capture every network in range” are rejected instead of being misread as a target name.
 
