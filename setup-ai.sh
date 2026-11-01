@@ -613,10 +613,6 @@ command -v sudo >/dev/null || {
   exit 1
 }
 
-echo "AutoWIFI needs sudo access for wireless adapters and capture tools."
-echo "Enter your Kali password when prompted:"
-sudo -v
-echo "Sudo access confirmed."
 exec python3 "$HOME/.config/autowifi-kali-setup/autowifi_operator.py"
 SH
 chmod +x "$BIN_DIR/autowifi-console"
