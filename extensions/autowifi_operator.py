@@ -6,9 +6,12 @@ requests fall back to the local MCPHost operator.
 
 from __future__ import annotations
 
+import os
 import re
 import shlex
+import signal
 import subprocess
+import time
 from pathlib import Path
 
 
@@ -48,6 +51,62 @@ Type chat for freeform AI mode, help for this list, or quit to exit.
 
 def _bin(name: str) -> str:
     return str(BIN_DIR / name)
+
+
+def _action_label(command: list[str]) -> str:
+    words = command[1:]
+    action = words[0] if words else "request"
+    labels = {
+        "radios": "Configuring and verifying wireless adapter modes",
+        "monitor": "Enabling monitor mode",
+        "managed": "Restoring managed mode",
+        "nearby": "Scanning nearby access points and associated clients",
+        "networks": "Scanning nearby Wi-Fi access points",
+        "devices": "Discovering devices on the connected LAN",
+        "handshake": "Running the handshake capture workflow",
+        "pmkid": "Running the PMKID capture workflow",
+        "wps": "Running the WPS assessment",
+        "audit": "Running the target assessment",
+        "crack": "Testing the supplied capture and wordlist",
+        "verify": "Verifying the supplied capture",
+        "wordlists": "Finding installed wordlists",
+        "interfaces": "Reading wireless and LAN interfaces",
+        "check": "Checking AutoWIFI dependencies",
+    }
+    return labels.get(action, "Running the requested AutoWIFI action")
+
+
+def run_with_progress(command: list[str], interval: float = 5.0) -> int:
+    print(f"{_action_label(command)}...", flush=True)
+    started = time.monotonic()
+    next_update = interval
+    process = subprocess.Popen(command, start_new_session=True)
+    try:
+        while True:
+            try:
+                status = process.wait(timeout=min(1.0, max(0.1, interval)))
+                elapsed = int(time.monotonic() - started)
+                if status == 0:
+                    print(f"Action completed in {elapsed}s.", flush=True)
+                else:
+                    print(f"Action failed after {elapsed}s with exit code {status}.", flush=True)
+                return status
+            except subprocess.TimeoutExpired:
+                elapsed = time.monotonic() - started
+                if elapsed >= next_update:
+                    print(f"Still working... {int(elapsed)}s elapsed. Press Ctrl+C to stop.", flush=True)
+                    next_update += interval
+    except KeyboardInterrupt:
+        elapsed = int(time.monotonic() - started)
+        print(f"Stopping the action after {elapsed}s...", flush=True)
+        os.killpg(process.pid, signal.SIGTERM)
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            os.killpg(process.pid, signal.SIGKILL)
+            process.wait()
+        print("Action cancelled.", flush=True)
+        return 130
 
 
 def _interfaces_near_modes(text: str) -> tuple[str, str]:
@@ -208,12 +267,10 @@ def main() -> int:
             if not command:
                 continue
 
-        print(f"Running: {shlex.join(command[1:])}")
-        result = subprocess.run(command, check=False)
-        if result.returncode == 0:
+        print(f"Running: {shlex.join(command[1:])}", flush=True)
+        status = run_with_progress(command)
+        if status == 0:
             last_command = command
-        else:
-            print(f"Action failed with exit code {result.returncode}.")
 
 
 if __name__ == "__main__":
