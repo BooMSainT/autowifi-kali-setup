@@ -84,6 +84,31 @@ def _action_label(command: list[str]) -> str:
     return labels.get(action, "Running the requested AutoWIFI action")
 
 
+def _task_timeout(command: list[str]) -> int:
+    executable = Path(command[0]).name if command else ""
+    action = command[1] if len(command) > 1 else ""
+    if executable == "autowifi-ai":
+        return 300
+    limits = {
+        "check": 120,
+        "interfaces": 120,
+        "monitor": 120,
+        "managed": 120,
+        "radios": 120,
+        "devices": 180,
+        "networks": 180,
+        "nearby": 180,
+        "handshake": 240,
+        "pmkid": 180,
+        "wps": 420,
+        "audit": 240,
+        "verify": 120,
+        "wordlists": 120,
+        "crack": 3600,
+    }
+    return limits.get(action, 600)
+
+
 def run_with_progress(command: list[str], interval: float = 5.0) -> int:
     print(f"{_action_label(command)}...", flush=True)
     started = time.monotonic()
@@ -169,9 +194,17 @@ def launch_task_window(command: list[str], label: str) -> tuple[bool, Path | Non
     return False, None, "No supported terminal emulator opened the task"
 
 
-def _stream_task(command: list[str], log_file: Path, interval: float = 5.0) -> int:
+def _stream_task(
+    command: list[str],
+    log_file: Path,
+    interval: float = 5.0,
+    timeout: int | None = None,
+) -> int:
     started = time.monotonic()
     next_update = interval
+    deadline = timeout or _task_timeout(command)
+    timed_out = False
+    timed_out_at = 0.0
     output: queue.Queue[str | None] = queue.Queue()
     process = subprocess.Popen(
         command,
@@ -207,6 +240,16 @@ def _stream_task(command: list[str], log_file: Path, interval: float = 5.0) -> i
                     pass
 
                 elapsed = time.monotonic() - started
+                if elapsed >= deadline and process.poll() is None and not timed_out:
+                    message = f"[AutoWIFI] Task deadline reached after {int(elapsed)}s; stopping it.\n"
+                    print(message, end="", flush=True)
+                    log.write(message)
+                    log.flush()
+                    os.killpg(process.pid, signal.SIGTERM)
+                    timed_out = True
+                    timed_out_at = elapsed
+                if timed_out and process.poll() is None and elapsed >= timed_out_at + 5:
+                    os.killpg(process.pid, signal.SIGKILL)
                 if elapsed >= next_update and process.poll() is None:
                     message = f"[AutoWIFI] Still working... {int(elapsed)}s elapsed.\n"
                     print(message, end="", flush=True)
@@ -217,7 +260,8 @@ def _stream_task(command: list[str], log_file: Path, interval: float = 5.0) -> i
                 if process.poll() is not None and reader_finished and output.empty():
                     break
 
-            return process.wait()
+            status = process.wait()
+            return 124 if timed_out else status
     except KeyboardInterrupt:
         os.killpg(process.pid, signal.SIGTERM)
         try:
@@ -252,6 +296,7 @@ def run_task_file(task_file: Path) -> int:
     print(label)
     print(f"Command: {shlex.join(command[1:])}")
     print(f"Log: {log_file}")
+    print(f"Maximum run time: {_task_timeout(command)} seconds")
     print("=" * 72)
     print("Enter your Kali password here if sudo asks for it.")
     print()
@@ -268,7 +313,7 @@ def run_task_file(task_file: Path) -> int:
             status = sudo_status
         else:
             print("Sudo access confirmed. Starting the task...\n")
-            status = _stream_task(command, log_file)
+            status = _stream_task(command, log_file, timeout=_task_timeout(command))
     else:
         print("sudo is missing.")
         status = 1
@@ -402,6 +447,12 @@ def interpret(text: str) -> list[str] | None:
         if keyword in lower:
             target = _target_after_keyword(stripped, keyword)
             if target:
+                if action == "handshake":
+                    command = [_bin("autowifi-direct"), "handshake", target]
+                    interfaces = INTERFACE_RE.findall(stripped)
+                    if interfaces:
+                        command.extend(["--interface", interfaces[0]])
+                    return command
                 return [_bin("autowifi-quick"), action, target]
 
     return [_bin("autowifi-ai"), stripped]
