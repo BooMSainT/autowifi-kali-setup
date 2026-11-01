@@ -510,10 +510,12 @@ case "$code" in
     ;;
   handshake)
     require_value "$@"
-    target="$*"
-    run_auto "my authorized wireless security assessment" "$target" \
-      "capture and verify one WPA handshake for the supplied target, report the artifact path and verification result, and restore managed mode" \
-      "dependencies,interfaces,monitor,scan,capture,verify,report"
+    target="$1"
+    args=(handshake "$target")
+    if [[ -n "${2:-}" ]]; then
+      args+=(--interface "$2")
+    fi
+    exec "$bin_dir/autowifi-direct" "${args[@]}"
     ;;
   pmkid)
     require_value "$@"
