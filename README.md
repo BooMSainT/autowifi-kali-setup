@@ -96,6 +96,8 @@ The console recognizes common operational requests and runs the matching AutoWIF
 
 While an action runs, the console prints elapsed-time updates every five seconds. It reports when the action completes, fails, or is cancelled with `Ctrl+C`, so a quiet scanner or model does not look frozen.
 
+When `autowifi-console` starts, it asks for the Kali password through `sudo` and confirms access before showing the prompt. Later actions reuse the cached authorization. If the sudo cache expires, the next privileged action can prompt again in the same terminal.
+
 Active capture and password-testing requests require one exact authorized SSID, BSSID, capture file, or lab target. Broad requests such as “capture every network in range” are rejected instead of being misread as a target name.
 
 Short code words still work, including `nearby`, `devices`, `networks`, `interfaces`, `wordlists`, `monitor wlan2`, `managed wlan0`, and `radios wlan2 wlan0`.
