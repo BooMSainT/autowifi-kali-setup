@@ -96,6 +96,8 @@ The console recognizes common operational requests and runs the matching AutoWIF
 
 Each action opens in a separate Airgeddon-style terminal window. That window shows the exact command, sudo prompt, live tool output, elapsed-time updates, final status, and saved log path. It remains open until you press Enter, while the main `autowifi-console` stays available for another request.
 
+Common scans, interface changes, LAN discovery, capture verification, wordlist discovery, and exact-target WPA handshake capture use deterministic AutoWIFI workflows instead of waiting for the local model to choose tools. Every task also has a hard deadline and is stopped with an explicit timeout result instead of running indefinitely.
+
 The sudo password prompt appears inside the task window where the privileged command runs. Linux does not display characters or asterisks while the password is entered. Task logs are saved under `~/.local/share/autowifi/tasks/`.
 
 Active capture and password-testing requests require one exact authorized SSID, BSSID, capture file, or lab target. Broad requests such as “capture every network in range” are rejected instead of being misread as a target name.
