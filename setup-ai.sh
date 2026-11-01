@@ -322,6 +322,7 @@ prompt=$(printf '%s\n' \
   "Treat these values as hard boundaries. Start with preflight, resolve and verify the wordlist before any crack action, complete the objective using only allowed actions, restore monitor mode, and provide the final report.")
 
 echo "Starting bounded autonomous run. Report: $report_file"
+echo "The console will print an elapsed-time update while the action is running."
 mcphost \
   -m "ollama:$model" \
   --config "$HOME/.config/autowifi-kali-setup/mcphost.json" \
