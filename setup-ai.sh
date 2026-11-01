@@ -608,6 +608,15 @@ command -v python3 >/dev/null || {
   echo "python3 is missing." >&2
   exit 1
 }
+command -v sudo >/dev/null || {
+  echo "sudo is missing." >&2
+  exit 1
+}
+
+echo "AutoWIFI needs sudo access for wireless adapters and capture tools."
+echo "Enter your Kali password when prompted:"
+sudo -v
+echo "Sudo access confirmed."
 exec python3 "$HOME/.config/autowifi-kali-setup/autowifi_operator.py"
 SH
 chmod +x "$BIN_DIR/autowifi-console"
