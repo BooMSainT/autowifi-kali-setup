@@ -80,7 +80,9 @@ def run_with_progress(command: list[str], interval: float = 5.0) -> int:
     print(f"{_action_label(command)}...", flush=True)
     started = time.monotonic()
     next_update = interval
-    process = subprocess.Popen(command, start_new_session=True)
+    # A separate process group lets Ctrl+C stop the complete action while
+    # retaining the controlling terminal that sudo needs for its password prompt.
+    process = subprocess.Popen(command, preexec_fn=os.setpgrp)
     try:
         while True:
             try:
