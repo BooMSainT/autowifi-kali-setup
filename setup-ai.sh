@@ -254,6 +254,14 @@ for value in "$scope" "$target" "$objective" "$allowed" "$wordlist"; do
   }
 done
 
+target_lower="$(printf '%s' "$target" | tr '[:upper:]' '[:lower:]')"
+case "$target_lower" in
+  *"all network"*|*"any network"*|*"every network"*|*"networks in range"*|*"networks within range"*|*"everything in range"*)
+    echo "--target must identify one exact authorized SSID, BSSID, capture file, or lab target." >&2
+    exit 2
+    ;;
+esac
+
 IFS=',' read -r -a requested_actions <<< "$allowed"
 for action in "${requested_actions[@]}"; do
   action="${action//[[:space:]]/}"
