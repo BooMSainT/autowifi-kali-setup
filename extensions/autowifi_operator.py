@@ -6,16 +6,24 @@ requests fall back to the local MCPHost operator.
 
 from __future__ import annotations
 
+import json
 import os
+import queue
 import re
 import shlex
+import shutil
 import signal
 import subprocess
+import sys
+import threading
 import time
+import uuid
+from datetime import datetime
 from pathlib import Path
 
 
 BIN_DIR = Path.home() / ".local" / "bin"
+TASK_DIR = Path.home() / ".local" / "share" / "autowifi" / "tasks"
 INTERFACE_RE = re.compile(r"\b(?:wlan\d+(?:mon)?|wl[a-zA-Z0-9_.:-]+)\b", re.IGNORECASE)
 BROAD_TARGET_RE = re.compile(
     r"\b(?:all|any|every)\s+(?:nearby\s+)?networks?\b|"
@@ -109,6 +117,174 @@ def run_with_progress(command: list[str], interval: float = 5.0) -> int:
             process.wait()
         print("Action cancelled.", flush=True)
         return 130
+
+
+def _terminal_candidates(runner: list[str]) -> list[tuple[str, list[str]]]:
+    return [
+        ("xfce4-terminal", ["--window", "--title=AutoWIFI Task", "--execute", *runner]),
+        ("qterminal", ["--title", "AutoWIFI Task", "-e", *runner]),
+        ("gnome-terminal", ["--title=AutoWIFI Task", "--", *runner]),
+        ("konsole", ["-p", "tabtitle=AutoWIFI Task", "-e", *runner]),
+        ("mate-terminal", ["--title=AutoWIFI Task", "--", *runner]),
+        ("x-terminal-emulator", ["-T", "AutoWIFI Task", "-e", *runner]),
+        ("xterm", ["-T", "AutoWIFI Task", "-e", *runner]),
+    ]
+
+
+def launch_task_window(command: list[str], label: str) -> tuple[bool, Path | None, str]:
+    if not (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")):
+        return False, None, "No graphical display is available"
+
+    TASK_DIR.mkdir(parents=True, exist_ok=True)
+    task_id = f"{datetime.now():%Y%m%d-%H%M%S}-{uuid.uuid4().hex[:6]}"
+    task_file = TASK_DIR / f"{task_id}.json"
+    started_file = TASK_DIR / f"{task_id}.started"
+    payload = {
+        "id": task_id,
+        "label": label,
+        "command": command,
+        "created": datetime.now().isoformat(timespec="seconds"),
+    }
+    task_file.write_text(json.dumps(payload, indent=2) + "\n")
+    task_file.chmod(0o600)
+    runner = [sys.executable, str(Path(__file__).resolve()), "--run-task", str(task_file)]
+
+    for terminal_name, terminal_args in _terminal_candidates(runner):
+        terminal = shutil.which(terminal_name)
+        if not terminal:
+            continue
+        process = subprocess.Popen(
+            [terminal, *terminal_args],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            if started_file.exists():
+                return True, task_file.with_suffix(".log"), terminal_name
+            if process.poll() not in (None, 0):
+                break
+            time.sleep(0.1)
+
+    return False, None, "No supported terminal emulator opened the task"
+
+
+def _stream_task(command: list[str], log_file: Path, interval: float = 5.0) -> int:
+    started = time.monotonic()
+    next_update = interval
+    output: queue.Queue[str | None] = queue.Queue()
+    process = subprocess.Popen(
+        command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+        preexec_fn=os.setpgrp,
+    )
+
+    def read_output() -> None:
+        if process.stdout:
+            for line in process.stdout:
+                output.put(line)
+        output.put(None)
+
+    reader = threading.Thread(target=read_output, daemon=True)
+    reader.start()
+    reader_finished = False
+
+    try:
+        with log_file.open("a", encoding="utf-8") as log:
+            while True:
+                try:
+                    item = output.get(timeout=0.2)
+                    if item is None:
+                        reader_finished = True
+                    else:
+                        print(item, end="", flush=True)
+                        log.write(item)
+                        log.flush()
+                except queue.Empty:
+                    pass
+
+                elapsed = time.monotonic() - started
+                if elapsed >= next_update and process.poll() is None:
+                    message = f"[AutoWIFI] Still working... {int(elapsed)}s elapsed.\n"
+                    print(message, end="", flush=True)
+                    log.write(message)
+                    log.flush()
+                    next_update += interval
+
+                if process.poll() is not None and reader_finished and output.empty():
+                    break
+
+            return process.wait()
+    except KeyboardInterrupt:
+        os.killpg(process.pid, signal.SIGTERM)
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            os.killpg(process.pid, signal.SIGKILL)
+            process.wait()
+        return 130
+
+
+def run_task_file(task_file: Path) -> int:
+    TASK_DIR.mkdir(parents=True, exist_ok=True)
+    resolved_task = task_file.expanduser().resolve()
+    expected_dir = TASK_DIR.resolve()
+    if os.path.commonpath((str(resolved_task), str(expected_dir))) != str(expected_dir):
+        print("Invalid AutoWIFI task file.", file=sys.stderr)
+        return 2
+
+    payload = json.loads(resolved_task.read_text())
+    command = payload.get("command")
+    if not isinstance(command, list) or not command or not all(isinstance(value, str) for value in command):
+        print("Invalid AutoWIFI task command.", file=sys.stderr)
+        return 2
+
+    label = str(payload.get("label") or "AutoWIFI task")
+    started_file = resolved_task.with_suffix(".started")
+    log_file = resolved_task.with_suffix(".log")
+    started_file.write_text(datetime.now().isoformat(timespec="seconds") + "\n")
+
+    print("=" * 72)
+    print("AUTOWIFI TASK")
+    print(label)
+    print(f"Command: {shlex.join(command[1:])}")
+    print(f"Log: {log_file}")
+    print("=" * 72)
+    print("Enter your Kali password here if sudo asks for it.")
+    print()
+
+    with log_file.open("w", encoding="utf-8") as log:
+        log.write(f"AutoWIFI task: {label}\n")
+        log.write(f"Command: {shlex.join(command)}\n")
+        log.write(f"Started: {datetime.now().isoformat(timespec='seconds')}\n\n")
+
+    if shutil.which("sudo"):
+        sudo_status = subprocess.run(["sudo", "-v"], check=False).returncode
+        if sudo_status != 0:
+            print("Sudo authorization failed.")
+            status = sudo_status
+        else:
+            print("Sudo access confirmed. Starting the task...\n")
+            status = _stream_task(command, log_file)
+    else:
+        print("sudo is missing.")
+        status = 1
+
+    elapsed_note = "completed successfully" if status == 0 else f"finished with exit code {status}"
+    print()
+    print("=" * 72)
+    print(f"Task {elapsed_note}.")
+    print(f"Saved log: {log_file}")
+    print("=" * 72)
+    if sys.stdin.isatty():
+        try:
+            input("Press Enter to close this task window...")
+        except (EOFError, KeyboardInterrupt):
+            pass
+    return status
 
 
 def _interfaces_near_modes(text: str) -> tuple[str, str]:
@@ -233,7 +409,8 @@ def interpret(text: str) -> list[str] | None:
 
 def main() -> int:
     print("AutoWIFI natural-language operator")
-    print("Tell me what you want done. Type help for examples or quit to exit.")
+    print("Tell me what you want done. Each action opens in a separate terminal window.")
+    print("Type help for examples or quit to exit.")
     last_command: list[str] | None = None
 
     while True:
@@ -252,7 +429,13 @@ def main() -> int:
             print(HELP)
             continue
         if lower in {"chat", "ai"}:
-            subprocess.run([_bin("autowifi-ai")], check=False)
+            command = [_bin("autowifi-ai")]
+            launched, log_file, terminal = launch_task_window(command, "Interactive AutoWIFI AI")
+            if launched:
+                print(f"Opened AI chat in {terminal}. Task log: {log_file}")
+            else:
+                print(f"Could not open a task window: {terminal}. Running here instead.")
+                subprocess.run(command, check=False)
             continue
         if lower in {"do it", "just do it", "run it", "go ahead", "proceed"}:
             if not last_command:
@@ -269,11 +452,21 @@ def main() -> int:
             if not command:
                 continue
 
-        print(f"Running: {shlex.join(command[1:])}", flush=True)
-        status = run_with_progress(command)
-        if status == 0:
+        label = _action_label(command)
+        print(f"Launching: {shlex.join(command[1:])}", flush=True)
+        launched, log_file, terminal = launch_task_window(command, label)
+        if launched:
+            print(f"Opened task in {terminal}. Live output is in the new window.")
+            print(f"Task log: {log_file}")
             last_command = command
+        else:
+            print(f"Could not open a task window: {terminal}. Running here instead.")
+            status = run_with_progress(command)
+            if status == 0:
+                last_command = command
 
 
 if __name__ == "__main__":
+    if len(sys.argv) == 3 and sys.argv[1] == "--run-task":
+        raise SystemExit(run_task_file(Path(sys.argv[2])))
     raise SystemExit(main())
