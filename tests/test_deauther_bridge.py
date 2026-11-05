@@ -59,6 +59,25 @@ class DeautherTests(unittest.TestCase):
         self.assertEqual(result["state"], "unrecognized_firmware")
         link.write.assert_called_once_with(b"info\r\n")
 
+    def test_pyserial_permission_error_is_reported(self):
+        serial_stub = SimpleNamespace(
+            Serial=MagicMock(side_effect=OSError("[Errno 13] Permission denied")),
+            SerialException=OSError,
+        )
+        with patch.object(bridge, "serial", serial_stub):
+            result = bridge.connect("/dev/ttyUSB0", "status", 2)
+        self.assertEqual(result["state"], "permission_denied")
+
+    def test_operator_routes_deauther_status(self):
+        operator_file = FILE.parent / "autowifi_operator.py"
+        operator_spec = importlib.util.spec_from_file_location("autowifi_operator_test", operator_file)
+        operator = importlib.util.module_from_spec(operator_spec)
+        operator_spec.loader.exec_module(operator)
+        for prompt in ("deauther", "show my deauther status", "check my DSTIKE device"):
+            cmd = operator.interpret(prompt)
+            self.assertIsNotNone(cmd)
+            self.assertEqual(cmd[1], "deauther")
+
     def test_logging_is_private(self):
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp) / "status.jsonl"
