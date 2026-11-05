@@ -271,8 +271,8 @@ existing Kali setup repository, paste just this line:
 cd ~/autowifi-kali-setup && git pull && bash setup-deauther.sh
 ```
 
-The installer installs only \`python3-serial\` and \`usbutils\`, deploys
-\`autowifi-deauther\`, and immediately tests the USB serial connection at
+The installer installs only `python3-serial` and `usbutils`, deploys
+`autowifi-deauther`, and immediately tests the USB serial connection at
 115200 baud. It does **not** update the operating system, flash firmware, or
 transmit deauthentication frames. Run it as your usual user (sudo is used only
 for installing packages). If the device is absent, setup still finishes and
@@ -282,13 +282,13 @@ Afterward, these commands work without rerunning setup:
 
 ```bash
 autowifi-deauther detect             # list serial USB ports and USB details
-autowifi-deauther status             # verify 2.6.1 firmware with info/sysinfo
+autowifi-deauther status             # check Spacehuhn firmware using info/sysinfo
 autowifi-deauther cached-aps         # read existing results; does not initiate a scan
 autowifi-deauther listen --seconds 30 --record   # collect available serial output
 ```
 
 If more than one USB serial device is present, explicitly identify the
-deauther after reviewing \`detect\` output:
+deauther after reviewing `detect` output:
 
 ```bash
 autowifi-deauther status --port /dev/ttyUSB0
@@ -302,21 +302,21 @@ sudo usermod -aG dialout "$USER"
 
 Log out of Kali and back in to activate the group membership. If Kali
 reports **no USB serial ports**, try a known working **data-capable** micro-USB
-cable, another USB port, and \`lsusb\`. The device may power its screen over a
+cable, another USB port, and `lsusb`. The device may power its screen over a
 charge-only cable while providing no serial connection.
 
-The \`cached-aps\` command reads already-stored access-point observations,
-not a new scan. \`listen\` only captures unsolicited firmware serial output,
+The `cached-aps` command reads already-stored access-point observations,
+not a new scan. `listen` only captures unsolicited firmware serial output,
 so a quiet device may legitimately return an empty result. Both are
 read-only, and the bridge refuses arbitrary serial commands. With
-\`--record\`, JSONL logs are stored with permissions 0600 under
-\`~/.local/share/autowifi/deauther/events.jsonl\`. Treat recorded SSIDs and
+`--record`, JSONL logs are stored with permissions 0600 under
+`~/.local/share/autowifi/deauther/events.jsonl`. Treat recorded SSIDs and
 MAC addresses as private.
 
-The updated \`setup-ai.sh\` also exposes \`autowifi-quick deauther\` and
+The updated `setup-ai.sh` also exposes `autowifi-quick deauther` and
 natural-language requests such as “show my deauther status” through the
 AutoWIFI console **after refreshing** the generated AI shortcuts with
-\`bash setup-ai.sh\`. The standalone \`autowifi-deauther\` command works
+`bash setup-ai.sh`. The standalone `autowifi-deauther` command works
 immediately from the one-line setup above.
 
 Firmware command references: [official serial command documentation](https://docs.spacehuhn.com/deauther/usage/serial-commands/).
