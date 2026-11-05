@@ -182,7 +182,11 @@ def save_record(result: dict) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description=__doc__, epilog=(
+        "This is a read-only USB bridge: it cannot initiate a Wi-Fi scan or send "
+        "deauthentication frames. To review an existing on-device scan, use "
+        "cached-aps; to capture serial messages, use listen --seconds 30 --record."
+    ))
     parser.add_argument("action", nargs="?", default="status",
                         choices=("detect", "status", "cached-aps", "listen"))
     parser.add_argument("--port", help="Specific USB serial device or /dev/serial/by-id symlink")
