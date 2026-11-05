@@ -48,11 +48,12 @@ Examples:
   audit MyWiFi
   show my wordlists
   show my Flipper Zero and Pwn device status
+  check my DSTIKE ESP8266 deauther status
   do it
 
 Short codes still work: nearby, devices, networks, interfaces, check,
 wordlists, audit TARGET, handshake TARGET, pmkid TARGET, wps TARGET,
-deauth5 TARGET, verify FILE, crack FILE, hardware, reports, health.
+deauth5 TARGET, verify FILE, crack FILE, hardware, deauther, reports, health.
 
 Type chat for freeform AI mode, help for this list, or quit to exit.
 """
@@ -73,6 +74,7 @@ def _action_label(command: list[str]) -> str:
         "networks": "Scanning nearby Wi-Fi access points",
         "devices": "Discovering devices on the connected LAN",
         "hardware": "Checking connected Flipper and configured Pwn device",
+        "deauther": "Checking DSTIKE ESP8266 USB serial status",
         "handshake": "Running the handshake capture workflow",
         "pmkid": "Running the PMKID capture workflow",
         "wps": "Running the WPS assessment",
@@ -99,6 +101,7 @@ def _task_timeout(command: list[str]) -> int:
         "radios": 120,
         "devices": 180,
         "hardware": 60,
+        "deauther": 60,
         "networks": 180,
         "nearby": 180,
         "handshake": 240,
@@ -391,6 +394,8 @@ def interpret(text: str) -> list[str] | None:
         "nearby",
         "devices",
         "hardware",
+        "deauther",
+        "dstike",
         "flipper",
         "pwn",
         "clients",
@@ -406,6 +411,9 @@ def interpret(text: str) -> list[str] | None:
         "reports",
         "health",
     }
+    if "deauther" in lower or "dstike" in lower:
+        return [_bin("autowifi-quick"), "deauther", *rest] if code in {"deauther", "dstike"} else [_bin("autowifi-quick"), "deauther"]
+
     if code in direct_codes:
         return [_bin("autowifi-quick"), code, *rest]
 
