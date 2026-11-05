@@ -72,6 +72,8 @@ def _bin(name: str) -> str:
 def _action_label(command: list[str]) -> str:
     words = command[1:]
     action = words[0] if words else "request"
+    if Path(command[0]).name == "autowifi-menu":
+        return "Opening AutoWIFI simple home network menu"
     labels = {
         "radios": "Configuring and verifying wireless adapter modes",
         "monitor": "Enabling monitor mode",
@@ -101,6 +103,8 @@ def _task_timeout(command: list[str]) -> int:
     action = command[1] if len(command) > 1 else ""
     if executable == "autowifi-ai":
         return 300
+    if executable == "autowifi-menu":
+        return 7200  # Interactive menu remains available during an extended session.
     if executable == "autowifi-quick" and action in {"deauther", "dstike"} and len(command) > 2 and command[2] == "listen":
         try:
             seconds_idx = command.index("--seconds")
@@ -298,7 +302,7 @@ def _read_only_no_sudo(command: list[str]) -> bool:
     if not command:
         return False
     executable = Path(command[0]).name
-    if executable in {"autowifi-deauther", "autowifi-hardware"}:
+    if executable in {"autowifi-deauther", "autowifi-hardware", "autowifi-menu"}:
         return True
     return (executable == "autowifi-quick" and len(command) > 1 and
             command[1] in {"deauther", "dstike", "hardware", "flipper", "pwn"})
