@@ -411,11 +411,11 @@ def interpret(text: str) -> list[str] | None:
         "reports",
         "health",
     }
+    if "deauther" in lower or "dstike" in lower:
+        return [_bin("autowifi-quick"), "deauther", *rest] if code in {"deauther", "dstike"} else [_bin("autowifi-quick"), "deauther"]
+
     if code in direct_codes:
         return [_bin("autowifi-quick"), code, *rest]
-
-    if "deauther" in lower or "dstike" in lower:
-        return [_bin("autowifi-quick"), "deauther"]
 
     if any(name in lower for name in ("flipper", "pwn father", "pwnagotchi", "p4wnp1")):
         return [_bin("autowifi-quick"), "hardware"]
