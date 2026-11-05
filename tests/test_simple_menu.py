@@ -82,6 +82,7 @@ phy#0
             "what's connected to my wifi": ("autowifi-menu", "devices"),
             "scan my network": ("autowifi-menu", "devices"),
             "use my Ralink antenna to scan nearby Wi-Fi": ("autowifi-menu", "wireless"),
+            "scan nearby wifi networks": ("autowifi-menu", "wireless"),
             "which antenna is being used": ("autowifi-menu", "adapters"),
         }
         for phrase, (command, action) in requests.items():
