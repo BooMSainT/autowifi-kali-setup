@@ -24,6 +24,8 @@ AUTOWIFI | Home Network & Antenna
 4. Check DSTIKE ESP8266 USB connection
 5. Show saved DSTIKE Wi-Fi observations
 6. Open AutoWIFI AI chat
+7. BOMB: simulate incidents for saved home networks
+8. Edit BOMB networks (add / rename / delete SSIDs)
 0. Exit
 ```
 
@@ -48,6 +50,48 @@ console router in place.
 
 You can also skip the menu using one-word actions such as
 \`wifi devices\`, \`wifi wireless\`, or \`wifi adapters\`.
+
+## BOMB — editable saved home-network rehearsal
+
+**BOMB** is a clearly labeled **offline-only** simulation of incident alerts
+for your own home Wi-Fi network names, processed sequentially. It does not
+disconnect devices, transmit deauthentication frames, or establish whether a
+router really resists an attack. No nearby networks are auto-selected.
+
+After the normal menu installation, run `wifi` and choose:
+
+```text
+7. BOMB: simulate incidents for saved home networks
+8. Edit BOMB networks (add / rename / delete SSIDs)
+```
+
+You can also use short commands:
+
+```bash
+wifi networks      # edit the saved SSID list whenever names change
+wifi bomb          # run the synthetic rehearsal on those names, in order
+autowifi-bomb list # view the saved names
+```
+
+The network editor has four choices: **A** add, **R** rename,
+**D** delete, and **Q** back. Changes save instantly to:
+
+```text
+~/.config/autowifi-kali-setup/bomb-networks.json
+```
+
+That configuration lives **outside Git**, so `git pull` and future
+menu updates preserve your saved SSIDs. You never need to change script
+source to rename your networks. The file is private (mode 0600) and
+supports up to 64 explicitly entered home network names.
+
+Each run writes a local JSON report under
+`~/.local/share/autowifi/bomb/` with synthetic events clearly marked,
+zero Wi-Fi frames transmitted and zero devices intentionally disconnected.
+This is useful for rehearsing alert handling and documenting the networks
+you want to review. To check actual deauthentication resistance, inspect
+PMF (802.11w)/WPA3 settings and device/router logs separately; these are
+**not measured by the simulation**.
 
 ## Install AutoWIFI
 
