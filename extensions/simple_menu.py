@@ -181,6 +181,8 @@ ACTIONS = {
     "deauther": lambda: _run_program("autowifi-deauther", "status"),
     "cached": lambda: _run_program("autowifi-deauther", "cached-aps"),
     "ai": lambda: _run_program("autowifi-ai"),
+    "bomb": lambda: _run_program("autowifi-bomb", "run"),
+    "networks": lambda: _run_program("autowifi-bomb", "manage"),
 }
 
 OPTIONS = [
@@ -190,6 +192,8 @@ OPTIONS = [
     ("4", "Check DSTIKE ESP8266 USB connection", "deauther"),
     ("5", "Show saved DSTIKE Wi-Fi observations", "cached"),
     ("6", "Open AutoWIFI AI chat", "ai"),
+    ("7", "BOMB: simulate incidents for saved home networks", "bomb"),
+    ("8", "Edit BOMB networks (add / rename / delete SSIDs)", "networks"),
 ]
 
 
@@ -218,7 +222,7 @@ def main(argv: list[str] | None = None) -> int:
         if selected:
             ACTIONS[selected]()
             continue
-        print("Unknown choice. Use 0-6.")
+        print("Unknown choice. Use 0-8.")
 
 
 if __name__ == "__main__":
