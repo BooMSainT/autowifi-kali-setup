@@ -417,6 +417,7 @@ AutoWIFI quick codes
   networks                      Wi-Fi access points sorted by power
   nearby [SSID/BSSID]           Nearby wireless clients sorted by power
   devices                       Active hosts on your private LAN
+  hardware [discover|status]     Flipper/Pwn hardware status (read-only)
   clients SSID/BSSID            Clients associated with one target
   audit SSID/BSSID              Scan and recommend applicable tests
   handshake SSID/BSSID          Capture and verify a WPA handshake
@@ -495,6 +496,12 @@ case "$code" in
     ;;
   devices)
     exec "$bin_dir/autowifi-devices" "$@"
+    ;;
+  hardware|flipper|pwn)
+    if [[ $# -gt 0 ]]; then
+      exec "$bin_dir/autowifi-hardware" "$@"
+    fi
+    exec "$bin_dir/autowifi-hardware" status
     ;;
   clients)
     require_value "$@"
@@ -679,12 +686,15 @@ fi
 SH
 chmod +x "$BIN_DIR/autowifi-ai-doctor"
 
+bash "$SCRIPT_DIR/setup-hardware.sh"
+
 echo "Ready:"
 echo "  Code words:  autowifi-console"
 echo "  AI chat:     autowifi-ai"
 echo "  Autonomous:  autowifi-auto --help"
 echo "  Nearby:      autowifi-nearby [SSID or BSSID]"
 echo "  LAN devices: autowifi-devices"
+echo "  Hardware:    autowifi-hardware status"
 echo "  Quick codes: autowifi-codes"
 echo "  Diagnostic:  autowifi-ai-doctor"
 echo "Use only on networks you own or have explicit permission to test."
