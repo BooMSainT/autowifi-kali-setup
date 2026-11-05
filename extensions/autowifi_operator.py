@@ -52,6 +52,8 @@ Examples:
   find devices on my home network
   use my Ralink antenna to scan nearby Wi-Fi
   which adapter is being used
+  bomb
+  edit bomb networks
   check my DSTIKE ESP8266 deauther status
   deauther listen for 30 seconds record
   deauther cached access points
@@ -85,6 +87,8 @@ def _action_label(command: list[str]) -> str:
         "deauther": "Checking DSTIKE ESP8266 USB serial status",
         "wireless": "Observing nearby Wi-Fi with Ralink USB adapter",
         "adapters": "Checking Wi-Fi and antenna adapter selection",
+        "bomb": "Rehearsing simulated incidents for manually saved home networks",
+        "networks": "Editing the saved BOMB home Wi-Fi list",
         "handshake": "Running the handshake capture workflow",
         "pmkid": "Running the PMKID capture workflow",
         "wps": "Running the WPS assessment",
@@ -492,6 +496,11 @@ def interpret(text: str) -> list[str] | None:
     }
     if code in {"menu", "wifi"} or lower in {"show menu", "open menu", "main menu"}:
         return [_bin("autowifi-menu")]
+
+    if "bomb" in lower:
+        if any(word in lower for word in ("edit", "manage", "change", "rename", "add", "remove", "delete", "settings")):
+            return [_bin("autowifi-menu"), "networks"]
+        return [_bin("autowifi-menu"), "bomb"]
 
     if (("antenna" in lower or "ralink" in lower or "rt3070" in lower) and
             any(word in lower for word in ("scan", "nearby", "survey", "networks"))):
