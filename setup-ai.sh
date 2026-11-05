@@ -418,6 +418,7 @@ AutoWIFI quick codes
   nearby [SSID/BSSID]           Nearby wireless clients sorted by power
   devices                       Active hosts on your private LAN
   hardware [discover|status]     Flipper/Pwn hardware status (read-only)
+  deauther [detect|status]       DSTIKE ESP8266 USB status (read-only)
   clients SSID/BSSID            Clients associated with one target
   audit SSID/BSSID              Scan and recommend applicable tests
   handshake SSID/BSSID          Capture and verify a WPA handshake
@@ -496,6 +497,9 @@ case "$code" in
     ;;
   devices)
     exec "$bin_dir/autowifi-devices" "$@"
+    ;;
+  deauther|dstike)
+    exec "$bin_dir/autowifi-deauther" "$@"
     ;;
   hardware|flipper|pwn)
     if [[ $# -gt 0 ]]; then
@@ -695,6 +699,7 @@ echo "  Autonomous:  autowifi-auto --help"
 echo "  Nearby:      autowifi-nearby [SSID or BSSID]"
 echo "  LAN devices: autowifi-devices"
 echo "  Hardware:    autowifi-hardware status"
+echo "  Deauther:    autowifi-deauther status (after bash setup-deauther.sh)"
 echo "  Quick codes: autowifi-codes"
 echo "  Diagnostic:  autowifi-ai-doctor"
 echo "Use only on networks you own or have explicit permission to test."
