@@ -78,6 +78,51 @@ class DeautherTests(unittest.TestCase):
             self.assertIsNotNone(cmd)
             self.assertEqual(cmd[1], "deauther")
 
+    def test_console_parses_read_only_deauther_intents(self):
+        operator_file = FILE.parent / "autowifi_operator.py"
+        spec = importlib.util.spec_from_file_location("operator_safe_route_test", operator_file)
+        operator = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(operator)
+        cases = {
+            "deauther": ["deauther", "status"],
+            "deauther status": ["deauther", "status"],
+            "show my deauther status": ["deauther", "status"],
+            "deauther listen for 30 seconds record": [
+                "deauther", "listen", "--seconds", "30", "--record"
+            ],
+            "deauther listen --seconds 60 --record": [
+                "deauther", "listen", "--seconds", "60", "--record"
+            ],
+            "deauther listen for 2 minutes": [
+                "deauther", "listen", "--seconds", "120"
+            ],
+            "deauther cached access points": ["deauther", "cached-aps"],
+            "deauther detect USB": ["deauther", "detect"],
+            "deauther scan for 30 seconds": ["deauther", "--help"],
+        }
+        for request, expected in cases.items():
+            with self.subTest(request=request):
+                self.assertEqual(operator.interpret(request)[1:], expected)
+
+    def test_hardware_checks_do_not_need_sudo(self):
+        operator_file = FILE.parent / "autowifi_operator.py"
+        spec = importlib.util.spec_from_file_location("operator_no_sudo_test", operator_file)
+        operator = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(operator)
+        self.assertTrue(operator._read_only_no_sudo(
+            ["/home/user/.local/bin/autowifi-quick", "deauther", "status"]
+        ))
+        self.assertTrue(operator._read_only_no_sudo(
+            ["/home/user/.local/bin/autowifi-hardware", "status"]
+        ))
+        self.assertFalse(operator._read_only_no_sudo(
+            ["/home/user/.local/bin/autowifi-quick", "monitor", "wlan2"]
+        ))
+        self.assertEqual(operator._task_timeout(
+            ["/home/user/.local/bin/autowifi-quick", "deauther", "listen",
+             "--seconds", "120"]
+        ), 140)
+
     def test_logging_is_private(self):
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp) / "status.jsonl"
