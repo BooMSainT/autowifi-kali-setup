@@ -203,6 +203,65 @@ See all options with:
 autowifi-auto --help
 ```
 
+## Flipper Zero and Pwn-device hardware status (optional)
+
+The AI setup now installs `autowifi-hardware`, a **read-only** hardware bridge.
+It never sends RF/IR commands, injects wireless traffic, or runs arbitrary
+commands on attached devices. It does not require either device to be present.
+
+Install or refresh:
+
+```bash
+cd ~/autowifi-kali-setup
+git pull
+bash setup-ai.sh
+sudo apt install python3-serial   # optional; enables Flipper USB status reads
+```
+
+Connect the Flipper Zero by USB, close qFlipper, and run:
+
+```bash
+autowifi-hardware discover
+autowifi-hardware status
+autowifi-quick hardware
+autowifi-console
+# Console example: show my Flipper Zero status
+```
+
+The bridge detects Flipper USB serial paths in `/dev/serial/by-id/` and uses
+the official `info device` CLI command at 230400 baud. If serial permissions
+are denied, ensure your Kali user has access to the port (typically group
+`dialout`; log out and back in after changing group membership).
+
+**Pwn device:** "Pwn Father" has not been mapped to a specific hardware
+model. Only a Linux-based device that **you administer**, supports SSH, and
+already has SSH keys and a trusted host key configured can be checked with
+the generic adapter. No SSH target is searched for or guessed. Specify it
+only when its address and login are known:
+
+```bash
+export AUTOWIFI_PWN_HOST=192.168.1.50   # replace with YOUR device IP
+export AUTOWIFI_PWN_USER=pi              # replace with YOUR SSH login
+ssh "$AUTOWIFI_PWN_USER@$AUTOWIFI_PWN_HOST"  # trust host key yourself first
+autowifi-hardware status --json
+```
+
+The read-only SSH check runs `uname -s && uptime -p` with batch-mode and
+strict host-key verification. No SSH password or private key is stored in
+this repository. These environment variables are **not** persisted by setup.
+
+Monitor locally and optionally save private JSONL snapshots:
+
+```bash
+autowifi-hardware watch --interval 15 --cycles 3 --record
+# Log: ~/.local/share/autowifi/hardware/events.jsonl (mode 0600)
+```
+
+The output is independent of wireless monitor mode and does not change
+interfaces. The Flipper's device information may contain device identifiers;
+keep local hardware logs private. A protocol-specific Pwn Father integration
+can be added once its precise model is identified.
+
 ## Check performance
 
 ```bash
