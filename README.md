@@ -313,11 +313,23 @@ read-only, and the bridge refuses arbitrary serial commands. With
 `~/.local/share/autowifi/deauther/events.jsonl`. Treat recorded SSIDs and
 MAC addresses as private.
 
-The updated `setup-ai.sh` also exposes `autowifi-quick deauther` and
-natural-language requests such as “show my deauther status” through the
-AutoWIFI console **after refreshing** the generated AI shortcuts with
-`bash setup-ai.sh`. The standalone `autowifi-deauther` command works
-immediately from the one-line setup above.
+The existing `autowifi-quick deauther` and `autowifi-console` commands
+are refreshed automatically by `bash setup-deauther.sh` when already installed.
+Examples inside `autowifi-console`:
+
+```text
+deauther status
+deauther detect USB
+deauther cached access points
+deauther listen for 30 seconds record
+```
+
+The console will explicitly show CLI help for requests such as
+`deauther scan for 30 seconds`, because this **read-only** bridge does not
+start radio scans. Use the DSTIKE's own Scan menu to collect new observations,
+then request its cached results in Kali. The console does not require a
+sudo password for read-only deauther/hardware checks; USB permissions may
+still need the dialout group as described above.
 
 Firmware command references: [official serial command documentation](https://docs.spacehuhn.com/deauther/usage/serial-commands/).
 

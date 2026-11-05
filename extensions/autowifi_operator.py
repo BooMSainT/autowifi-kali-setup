@@ -49,13 +49,15 @@ Examples:
   show my wordlists
   show my Flipper Zero and Pwn device status
   check my DSTIKE ESP8266 deauther status
+  deauther listen for 30 seconds record
+  deauther cached access points
   do it
 
 Short codes still work: nearby, devices, networks, interfaces, check,
 wordlists, audit TARGET, handshake TARGET, pmkid TARGET, wps TARGET,
 deauth5 TARGET, verify FILE, crack FILE, hardware, deauther, reports, health.
 
-Type chat for freeform AI mode, help for this list, or quit to exit.
+The deauther USB bridge is read-only. For a new Wi-Fi scan, use your DSTIKE\'s\non-device scanning controls, then request deauther cached access points.\nType chat for freeform AI mode, help for this list, or quit to exit.
 """
 
 
@@ -93,6 +95,13 @@ def _task_timeout(command: list[str]) -> int:
     action = command[1] if len(command) > 1 else ""
     if executable == "autowifi-ai":
         return 300
+    if executable == "autowifi-quick" and action in {"deauther", "dstike"} and len(command) > 2 and command[2] == "listen":
+        try:
+            seconds_idx = command.index("--seconds")
+            seconds = int(command[seconds_idx + 1])
+        except (ValueError, IndexError):
+            seconds = 30
+        return max(60, min(140, seconds + 20))
     limits = {
         "check": 120,
         "interfaces": 120,
@@ -278,6 +287,17 @@ def _stream_task(
         return 130
 
 
+def _read_only_no_sudo(command: list[str]) -> bool:
+    """Only known local, read-only device status commands skip sudo checks."""
+    if not command:
+        return False
+    executable = Path(command[0]).name
+    if executable in {"autowifi-deauther", "autowifi-hardware"}:
+        return True
+    return (executable == "autowifi-quick" and len(command) > 1 and
+            command[1] in {"deauther", "dstike", "hardware", "flipper", "pwn"})
+
+
 def run_task_file(task_file: Path) -> int:
     TASK_DIR.mkdir(parents=True, exist_ok=True)
     resolved_task = task_file.expanduser().resolve()
@@ -304,7 +324,8 @@ def run_task_file(task_file: Path) -> int:
     print(f"Log: {log_file}")
     print(f"Maximum run time: {_task_timeout(command)} seconds")
     print("=" * 72)
-    print("Enter your Kali password here if sudo asks for it.")
+    if not _read_only_no_sudo(command):
+        print("Enter your Kali password here if sudo asks for it.")
     print()
 
     with log_file.open("w", encoding="utf-8") as log:
@@ -312,7 +333,10 @@ def run_task_file(task_file: Path) -> int:
         log.write(f"Command: {shlex.join(command)}\n")
         log.write(f"Started: {datetime.now().isoformat(timespec='seconds')}\n\n")
 
-    if shutil.which("sudo"):
+    if _read_only_no_sudo(command):
+        print("Read-only hardware task: no sudo required.\n")
+        status = _stream_task(command, log_file, timeout=_task_timeout(command))
+    elif shutil.which("sudo"):
         sudo_status = subprocess.run(["sudo", "-v"], check=False).returncode
         if sudo_status != 0:
             print("Sudo authorization failed.")
@@ -374,6 +398,51 @@ def request_problem(text: str) -> str:
     return ""
 
 
+def _deauther_command(text: str) -> list[str]:
+    """Normalize deauther natural language to the read-only CLI argument set.
+
+    The bridge cannot initiate a radio scan. Unsupported requests show
+    argparse help rather than passing unrecognized words or doing an action
+    that differs from the user's request.
+    """
+    cmd = [_bin("autowifi-quick"), "deauther"]
+    lower = text.lower()
+    # A user asking to start a scan should not get silently redirected
+    # to the 'listen' command: that reads serial data, not RF traffic.
+    if re.search(r"\bscan(?:ning)?\b", lower) and not re.search(r"\bcached\b", lower):
+        return [*cmd, "--help"]
+
+    if re.search(r"\b(?:listen|watch|record|serial\s+log|serial\s+output)\b", lower):
+        cmd.append("listen")
+        duration = re.search(
+            r"(?:--seconds(?:=|\s+)|\bfor\s+)?(\d+)\s*"
+            r"(seconds?|secs?|minutes?|mins?)\b",
+            lower,
+        )
+        bare_option = re.search(r"--seconds(?:=|\s+)(\d+)\b", lower)
+        if duration or bare_option:
+            match = duration or bare_option
+            value = int(match.group(1))
+            unit = duration.group(2) if duration else "seconds"
+            seconds = value * 60 if unit.startswith(("min",)) else value
+            if not 1 <= seconds <= 120:
+                return [*cmd[:2], "--help"]
+            cmd.extend(["--seconds", str(seconds)])
+        if re.search(r"\b(?:record|save|log)\b|--record\b", lower):
+            cmd.append("--record")
+        return cmd
+
+    if re.search(r"\b(?:cached|results|access points|aps)\b", lower):
+        return [*cmd, "cached-aps"]
+    if re.search(r"\b(?:detect|usb|serial ports?|discover|find|connect)\b", lower):
+        return [*cmd, "detect"]
+    if re.search(r"\b(?:status|info|check|device)\b", lower):
+        return [*cmd, "status"]
+    if re.fullmatch(r"\s*(?:deauther|dstike)\s*", lower):
+        return [*cmd, "status"]
+    return [*cmd, "--help"]
+
+
 def interpret(text: str) -> list[str] | None:
     stripped = text.strip()
     lower = stripped.lower()
@@ -412,7 +481,7 @@ def interpret(text: str) -> list[str] | None:
         "health",
     }
     if "deauther" in lower or "dstike" in lower:
-        return [_bin("autowifi-quick"), "deauther", *rest] if code in {"deauther", "dstike"} else [_bin("autowifi-quick"), "deauther"]
+        return _deauther_command(stripped)
 
     if code in direct_codes:
         return [_bin("autowifi-quick"), code, *rest]
