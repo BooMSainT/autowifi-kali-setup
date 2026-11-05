@@ -47,11 +47,12 @@ Examples:
   capture a handshake for MyWiFi
   audit MyWiFi
   show my wordlists
+  show my Flipper Zero and Pwn device status
   do it
 
 Short codes still work: nearby, devices, networks, interfaces, check,
 wordlists, audit TARGET, handshake TARGET, pmkid TARGET, wps TARGET,
-deauth5 TARGET, verify FILE, crack FILE, reports, health.
+deauth5 TARGET, verify FILE, crack FILE, hardware, reports, health.
 
 Type chat for freeform AI mode, help for this list, or quit to exit.
 """
@@ -71,6 +72,7 @@ def _action_label(command: list[str]) -> str:
         "nearby": "Scanning nearby access points and associated clients",
         "networks": "Scanning nearby Wi-Fi access points",
         "devices": "Discovering devices on the connected LAN",
+        "hardware": "Checking connected Flipper and configured Pwn device",
         "handshake": "Running the handshake capture workflow",
         "pmkid": "Running the PMKID capture workflow",
         "wps": "Running the WPS assessment",
@@ -96,6 +98,7 @@ def _task_timeout(command: list[str]) -> int:
         "managed": 120,
         "radios": 120,
         "devices": 180,
+        "hardware": 60,
         "networks": 180,
         "nearby": 180,
         "handshake": 240,
@@ -387,6 +390,9 @@ def interpret(text: str) -> list[str] | None:
         "networks",
         "nearby",
         "devices",
+        "hardware",
+        "flipper",
+        "pwn",
         "clients",
         "audit",
         "handshake",
@@ -402,6 +408,11 @@ def interpret(text: str) -> list[str] | None:
     }
     if code in direct_codes:
         return [_bin("autowifi-quick"), code, *rest]
+
+    if any(name in lower for name in ("flipper", "pwn father", "pwnagotchi", "p4wnp1")):
+        return [_bin("autowifi-quick"), "hardware"]
+    if "hardware" in lower and any(term in lower for term in ("status", "discover", "connected", "check")):
+        return [_bin("autowifi-quick"), "hardware"]
 
     monitor_interface, managed_interface = _interfaces_near_modes(stripped)
     if monitor_interface and managed_interface:
