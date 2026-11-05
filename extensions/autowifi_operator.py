@@ -508,6 +508,11 @@ def interpret(text: str) -> list[str] | None:
             "connected to my network", "on my home network")):
         return [_bin("autowifi-menu"), "devices"]
 
+    if (any(word in lower for word in ("nearby", "around me", "near me")) and
+            any(word in lower for word in ("wifi", "wi-fi", "network", "access point")) and
+            any(word in lower for word in ("scan", "survey", "show", "find"))):
+        return [_bin("autowifi-menu"), "wireless"]
+
     if "deauther" in lower or "dstike" in lower:
         return _deauther_command(stripped)
 
