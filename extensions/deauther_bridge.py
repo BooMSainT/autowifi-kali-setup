@@ -128,7 +128,10 @@ def connect(port: str, action: str, seconds: int) -> dict:
         return {"state": "permission_denied", "port": port,
                 "error": f"Cannot open {port}. Check membership in the dialout group."}
     except (OSError, serial.SerialException) as exc:
-        return {"state": "connection_failed", "port": port, "error": str(exc)}
+        message = str(exc)
+        if "permission denied" in message.lower() or "errno 13" in message.lower():
+            return {"state": "permission_denied", "port": port, "error": message}
+        return {"state": "connection_failed", "port": port, "error": message}
 
 
 def snapshot(args: argparse.Namespace) -> dict:
