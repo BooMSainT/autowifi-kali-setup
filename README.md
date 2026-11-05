@@ -4,6 +4,51 @@ Installs a local `~/AutoWIFI` checkout with pipx and adds an optional local AI o
 
 Use AutoWIFI only on networks you own or have explicit permission to test.
 
+## One-command menu for home-network auditing
+
+The new **simple menu** avoids memorizing Kali commands and keeps LAN discovery
+separate from external-antenna Wi-Fi surveys. On your Kali laptop:
+
+```bash
+cd ~/autowifi-kali-setup && git pull && bash setup-menu.sh && ~/.local/bin/wifi
+```
+
+This installs **without rebuilding AutoWIFI, downloading AI models, or changing
+the OS**. After installation, just type \`wifi\` or \`autowifi-menu\`:
+
+```text
+AUTOWIFI | Home Network & Antenna
+1. Find devices connected to my home network
+2. Scan nearby Wi-Fi using Ralink antenna adapter
+3. Show which Wi-Fi adapter / antenna AutoWIFI uses
+4. Check DSTIKE ESP8266 USB connection
+5. Show saved DSTIKE Wi-Fi observations
+6. Open AutoWIFI AI chat
+0. Exit
+```
+
+Inside an already-installed \`autowifi-console\`, type \`menu\`, or ask
+\`find devices on my home network\`, \`use my Ralink antenna to scan nearby
+Wi-Fi\`, or \`which antenna is being used\`. The menu installer refreshes the
+console router in place.
+
+**Important distinction:**
+- **Connected devices** uses the interface on your private LAN (normally the
+  route to your router). The external Wi-Fi antenna is not needed for that.
+- **Nearby Wi-Fi** looks for the actual Ralink RT3070/RT2870 USB radio by
+  its USB hardware ID, not by guessing \`wlan1\` or \`wlan2\`. It selects that
+  radio for an access-point survey, never silently falls back to internal Wi-Fi,
+  and refuses to change its mode if it carries your home-network uplink.
+- The DSTIKE ESP8266 is a separate wireless radio reached through USB serial,
+  not through the Ralink antenna.
+- This menu has **no deauthentication transmission controls**. Nearby Wi-Fi
+  surveys can temporarily use monitor mode and return the adapter to its
+  previous mode. A router device inventory may not see sleeping or isolated
+  clients, so compare it with your router's connected-device page.
+
+You can also skip the menu using one-word actions such as
+\`wifi devices\`, \`wifi wireless\`, or \`wifi adapters\`.
+
 ## Install AutoWIFI
 
 Clone the AutoWIFI source and this setup repository, then run the local setup script:
