@@ -48,6 +48,10 @@ Examples:
   audit MyWiFi
   show my wordlists
   show my Flipper Zero and Pwn device status
+  menu
+  find devices on my home network
+  use my Ralink antenna to scan nearby Wi-Fi
+  which adapter is being used
   check my DSTIKE ESP8266 deauther status
   deauther listen for 30 seconds record
   deauther cached access points
@@ -55,7 +59,7 @@ Examples:
 
 Short codes still work: nearby, devices, networks, interfaces, check,
 wordlists, audit TARGET, handshake TARGET, pmkid TARGET, wps TARGET,
-deauth5 TARGET, verify FILE, crack FILE, hardware, deauther, reports, health.
+deauth5 TARGET, verify FILE, crack FILE, hardware, deauther, reports, health.\nType menu to use numbered home-network and antenna checks.
 
 The deauther USB bridge is read-only. For a new Wi-Fi scan, use your DSTIKE\'s\non-device scanning controls, then request deauther cached access points.\nType chat for freeform AI mode, help for this list, or quit to exit.
 """
@@ -77,6 +81,8 @@ def _action_label(command: list[str]) -> str:
         "devices": "Discovering devices on the connected LAN",
         "hardware": "Checking connected Flipper and configured Pwn device",
         "deauther": "Checking DSTIKE ESP8266 USB serial status",
+        "wireless": "Observing nearby Wi-Fi with Ralink USB adapter",
+        "adapters": "Checking Wi-Fi and antenna adapter selection",
         "handshake": "Running the handshake capture workflow",
         "pmkid": "Running the PMKID capture workflow",
         "wps": "Running the WPS assessment",
@@ -480,6 +486,24 @@ def interpret(text: str) -> list[str] | None:
         "reports",
         "health",
     }
+    if code in {"menu", "wifi"} or lower in {"show menu", "open menu", "main menu"}:
+        return [_bin("autowifi-menu")]
+
+    if (("antenna" in lower or "ralink" in lower or "rt3070" in lower) and
+            any(word in lower for word in ("scan", "nearby", "survey", "networks"))):
+        return [_bin("autowifi-menu"), "wireless"]
+
+    if (("antenna" in lower or "adapter" in lower or "ralink" in lower) and
+            any(word in lower for word in ("which", "status", "using", "show", "list", "check"))):
+        return [_bin("autowifi-menu"), "adapters"]
+
+    if any(phrase in lower for phrase in (
+            "find devices", "scan my network", "audit my network",
+            "who is connected", "what is connected", "what's connected",
+            "connected to my wifi", "connected to my wi-fi",
+            "connected to my network", "on my home network")):
+        return [_bin("autowifi-menu"), "devices"]
+
     if "deauther" in lower or "dstike" in lower:
         return _deauther_command(stripped)
 
