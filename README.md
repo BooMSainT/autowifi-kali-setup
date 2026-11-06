@@ -4,6 +4,46 @@ Installs a local `~/AutoWIFI` checkout with pipx and adds an optional local AI o
 
 Use AutoWIFI only on networks you own or have explicit permission to test.
 
+## Critical update fix: `git pull` now updates the running menu
+
+Previous versions of `setup-menu.sh` copied `simple_menu.py`,
+`network_inventory.py`, and `bomb_simulation.py` into `~/.config/`.
+Consequently, `git pull` updated the source code while the `wifi` command
+could still run **old copied files**. That explains why a successful pull
+could look like nothing changed.
+
+**Fix once** from your Kali laptop:
+
+```bash
+cd ~/autowifi-kali-setup && git pull --ff-only && bash setup-menu.sh && ~/.local/bin/wifi --version && ~/.local/bin/wifi
+```
+
+The installer now checks the Git origin and branch, checks the Python syntax,
+installs launchers that point to the **live Git checkout**, and performs an
+offline launch smoke check. It prints the installed source directory and
+Git commit. The `wifi --version` output includes the exact Python path.
+
+**After that one-time repair**, future updates to the menu, NetworkManager
+inventory or BOMB logic require only:
+
+```bash
+cd ~/autowifi-kali-setup && git pull --ff-only && ~/.local/bin/wifi
+```
+
+The preferences (adapter choices and manually approved home SSIDs) remain
+under your local `~/.config/autowifi-kali-setup/` directory and are not
+overwritten by Git. The older `autowifi-direct` and `autowifi-console`
+wrappers still depend on installed copies; `setup-menu.sh` refreshes them
+for compatibility. If you are on a Git branch other than `main`, the
+installer stops with an explicit error rather than installing an
+unexpected version.
+
+**Verification scope:** repository CI runs syntax and unit tests as well as
+offline end-to-end tests for the actual launcher, a fake `nmcli` scan, the
+numbered menu, and persistent BOMB configuration. Hardware radio behavior
+must still be validated on your own Kali laptop; CI cannot prove that a
+particular USB Wi-Fi adapter will discover nearby access points.
+
 ## New: selectable Wi-Fi results and reliable default scanning
 
 **Menu option 2** and `wifi scan` now use a normal **NetworkManager Wi-Fi
