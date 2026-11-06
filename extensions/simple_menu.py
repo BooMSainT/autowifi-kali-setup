@@ -529,12 +529,22 @@ def radio_bands(interface: str) -> list[str]:
 def doctor() -> int:
     """Read-only, actionable diagnostics; no sudo or interface mode changes."""
     print("\n=== AutoWIFI Diagnostics (read-only) ===")
-    dependencies = ["ip", "iw", "nmap", "airmon-ng", "airodump-ng"]
+    dependencies = ["ip", "iw", "nmcli", "rfkill", "nmap", "airmon-ng", "airodump-ng"]
     for dependency in dependencies:
         print(f"  {dependency}: {'installed' if shutil.which(dependency) else 'MISSING'}")
     for wrapper in ("autowifi-direct", "autowifi-devices", "autowifi-deauther"):
         available = (BIN_DIR / wrapper).is_file() or shutil.which(wrapper)
         print(f"  {wrapper}: {'installed' if available else 'MISSING'}")
+    if shutil.which("nmcli"):
+        manager = _capture(["nmcli", "-t", "-f", "DEVICE,TYPE,STATE", "device", "status"]).strip()
+        print("  NetworkManager devices:")
+        print("    " + manager.replace("\n", "\n    ") if manager else
+              "    NetworkManager is not responding or reports no devices.")
+    if shutil.which("rfkill"):
+        blocked = _capture(["rfkill", "list"]).strip()
+        print("  Radio blocking (rfkill):")
+        print("    " + blocked.replace("\n", "\n    ") if blocked else
+              "    No rfkill status was available.")
     route = default_route()
     print(f"  Default LAN route: {route or 'not found'}")
     try:
@@ -796,7 +806,14 @@ def nearby_wifi() -> int:
     """Default Wi-Fi inventory with a real, post-scan interactive network list."""
     selected = choose_inventory_radio()
     if not selected:
-        # User can change the selected adapter in option 3.
+        print("The managed scan cannot start with this selection.")
+        print("For an idle radio already in monitor mode, you can explicitly")
+        print("run the advanced survey without changing your default LAN adapter.")
+        try:
+            if input("Run advanced monitor-mode survey instead? [y/N]: ").strip().lower() == "y":
+                return advanced_monitor_survey()
+        except (EOFError, KeyboardInterrupt):
+            print()
         return 1
     print("\n=== WI-FI NETWORK DISCOVERY (managed mode) ===")
     print("Using a normal NetworkManager scan, not deauthentication or monitor mode.")
@@ -806,6 +823,8 @@ def nearby_wifi() -> int:
     if not recorded:
         print("No results could be recorded. Try wifi doctor.")
         return status or 1
+    if status == 130:
+        return 130
     return post_scan_choices(recorded[-1], rescan=nearby_wifi)
 
 
