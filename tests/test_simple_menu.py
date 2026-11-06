@@ -71,6 +71,95 @@ phy#0
             self.assertEqual(menu.connected_devices(), 0)
             run.assert_called_once_with("autowifi-devices")
 
+    def test_saved_interfaces_persist_locally_and_permissions_are_private(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "settings" / "interface-selection.json"
+            self.assertEqual(menu.load_settings(path), {"lan": "", "wireless": ""})
+            menu.save_settings({"lan": "eth0", "wireless": "wlan2"}, path)
+            self.assertEqual(menu.load_settings(path),
+                             {"lan": "eth0", "wireless": "wlan2"})
+            self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+            self.assertEqual(path.parent.stat().st_mode & 0o777, 0o700)
+            menu.save_settings({"lan": "", "wireless": "wlan0"}, path)
+            self.assertEqual(menu.load_settings(path)["lan"], "")
+
+    def test_invalid_settings_are_not_silently_replaced(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "interfaces.json"
+            path.write_text("not json")
+            with self.assertRaises(ValueError):
+                menu.load_settings(path)
+            self.assertEqual(path.read_text(), "not json")
+            with self.assertRaises(ValueError):
+                menu.save_settings({"lan": "eth0;bad", "wireless": ""}, path)
+
+    def test_list_private_lan_interfaces(self):
+        source = """[
+          {"ifname":"lo","operstate":"UNKNOWN","addr_info":[
+            {"family":"inet","scope":"host","local":"127.0.0.1","prefixlen":8}]},
+          {"ifname":"eth0","operstate":"UP","addr_info":[
+            {"family":"inet","scope":"global","local":"192.168.1.10","prefixlen":24}]},
+          {"ifname":"wlan0","operstate":"UP","addr_info":[
+            {"family":"inet","scope":"global","local":"10.0.0.5","prefixlen":24}]},
+          {"ifname":"wlan2","operstate":"DOWN","addr_info":[]}
+        ]"""
+        with patch.object(menu, "_capture", return_value=source):
+            entries = menu.lan_interfaces()
+        self.assertEqual([entry["name"] for entry in entries], ["eth0", "wlan0"])
+
+    def test_saved_eth0_is_used_for_lan_scan(self):
+        with patch.object(menu, "load_settings", return_value={"lan": "eth0", "wireless": ""}), \
+             patch.object(menu, "lan_interfaces", return_value=[
+                 {"name": "eth0", "subnet": "192.168.1.0/24"}
+             ]), patch.object(menu, "_run_program", return_value=0) as run:
+            self.assertEqual(menu.connected_devices(), 0)
+            run.assert_called_once_with("autowifi-devices", "--interface", "eth0")
+
+    def test_missing_selected_lan_does_not_fallback(self):
+        with patch.object(menu, "load_settings", return_value={"lan": "eth0", "wireless": ""}), \
+             patch.object(menu, "lan_interfaces", return_value=[
+                 {"name": "wlan0", "subnet": "192.168.1.0/24"}
+             ]), patch.object(menu, "_run_program") as run:
+            self.assertEqual(menu.connected_devices(), 1)
+            run.assert_not_called()
+
+    def test_saved_wifi_override_selects_non_ralink_radio(self):
+        radios = [
+            {"name": "wlan0", "mode": "managed", "is_ralink": False},
+            {"name": "wlan2", "mode": "managed", "is_ralink": True},
+        ]
+        with patch.object(menu, "load_settings", return_value={"lan": "", "wireless": "wlan0"}), \
+             patch.object(menu, "adapters", return_value=radios), \
+             patch.object(menu, "default_route", return_value="eth0"), \
+             patch.object(menu, "_capture", return_value="Not connected."):
+            self.assertEqual(menu.choose_survey_radio(), "wlan0")
+
+    def test_wifi_survey_does_not_switch_connected_radio(self):
+        with patch.object(menu, "load_settings", return_value={"lan": "", "wireless": "wlan0"}), \
+             patch.object(menu, "adapters", return_value=[
+                 {"name": "wlan0", "mode": "managed", "is_ralink": False}
+             ]), patch.object(menu, "default_route", return_value="eth0"), \
+             patch.object(menu, "_capture", return_value="Connected to 00:11:22:33:44:55"):
+            self.assertIsNone(menu.choose_survey_radio())
+
+    def test_stale_wifi_selection_does_not_fallback_to_other_radio(self):
+        with patch.object(menu, "load_settings", return_value={"lan": "", "wireless": "wlan3"}), \
+             patch.object(menu, "adapters", return_value=[
+                 {"name": "wlan0", "mode": "managed", "is_ralink": False}
+             ]):
+            self.assertIsNone(menu.choose_survey_radio())
+
+    def test_interface_selection_menu_can_save_and_reset(self):
+        entries = [{"name": "eth0", "subnet": "192.168.0.0/24"}]
+        saved = {"lan": "", "wireless": ""}
+        with patch.object(menu, "show_adapters"), \
+             patch.object(menu, "lan_interfaces", return_value=entries), \
+             patch.object(menu, "load_settings", side_effect=lambda: saved.copy()), \
+             patch.object(menu, "save_settings", side_effect=lambda x: saved.update(x)), \
+             patch("builtins.input", side_effect=["1", "1", "3", "0"]):
+            self.assertEqual(menu.adapter_settings(), 0)
+            self.assertEqual(saved, {"lan": "", "wireless": ""})
+
     def test_ai_console_common_commands(self):
         spec2 = importlib.util.spec_from_file_location(
             "autowifi_operator_menu_test", BASE / "extensions/autowifi_operator.py")
@@ -84,6 +173,8 @@ phy#0
             "use my Ralink antenna to scan nearby Wi-Fi": ("autowifi-menu", "wireless"),
             "scan nearby wifi networks": ("autowifi-menu", "wireless"),
             "which antenna is being used": ("autowifi-menu", "adapters"),
+            "change my network interface": ("autowifi-menu", "adapters"),
+            "switch wifi adapter": ("autowifi-menu", "adapters"),
         }
         for phrase, (command, action) in requests.items():
             with self.subTest(phrase=phrase):
