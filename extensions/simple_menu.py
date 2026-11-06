@@ -668,6 +668,10 @@ ACTIONS = {
     "networks": lambda: _run_program("autowifi-bomb", "manage"),
     "doctor": doctor,
     "history": recent_reports,
+    "status": doctor,
+    "reports": recent_reports,
+    "scan": nearby_wifi,
+    "audit": connected_devices,
 }
 
 OPTIONS = [
