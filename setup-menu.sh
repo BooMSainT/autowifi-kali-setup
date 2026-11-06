@@ -1,47 +1,79 @@
 #!/usr/bin/env bash
-# Quick local-user installer for the simple AutoWIFI menu.
+# AutoWIFI local menu bootstrap. No sudo, no AI model rebuild.
 set -euo pipefail
-SCRIPT_DIR="$(cd -- "$(dirname -- "$0")" && pwd)"
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "$0")" && pwd -P)"
 BIN_DIR="$HOME/.local/bin"
 CONFIG_DIR="$HOME/.config/autowifi-kali-setup"
+EXPECTED_REPO='BooMSainT/autowifi-kali-setup'
 
-if [[ "$(id -u)" -eq 0 ]]; then
-  echo "Run this as your normal Kali user, not root." >&2
+die() {
+  echo "AutoWIFI setup error: $*" >&2
   exit 2
-fi
-if [[ ! -f "$SCRIPT_DIR/extensions/simple_menu.py" || ! -f "$SCRIPT_DIR/extensions/bomb_simulation.py" || ! -f "$SCRIPT_DIR/extensions/network_inventory.py" ]]; then
-  echo "Menu file missing. Run git pull from ~/autowifi-kali-setup." >&2
-  exit 2
-fi
+}
+
+[[ "$(id -u)" -ne 0 ]] || die "Run as your normal Kali user, not root."
+command -v git >/dev/null || die "git is missing."
+[[ -f "$SCRIPT_DIR/.git" || -d "$SCRIPT_DIR/.git" ]] ||
+  die "This is not a Git checkout. Clone https://github.com/$EXPECTED_REPO first."
+
+branch="$(git -C "$SCRIPT_DIR" symbolic-ref --short -q HEAD || true)"
+remote="$(git -C "$SCRIPT_DIR" remote get-url origin 2>/dev/null || true)"
+case "$remote" in
+  *github.com:BooMSainT/autowifi-kali-setup|*github.com:BooMSainT/autowifi-kali-setup.git|\
+  *github.com/BooMSainT/autowifi-kali-setup|*github.com/BooMSainT/autowifi-kali-setup.git)
+    ;;
+  *)
+    die "Wrong Git origin: $remote. Expected https://github.com/$EXPECTED_REPO"
+    ;;
+esac
+[[ "$branch" == "main" ]] ||
+  die "Currently on Git branch '$branch', not 'main'. Run: git switch main && git pull --ff-only"
+
+for file in simple_menu.py network_inventory.py bomb_simulation.py quick_scan.py autowifi_operator.py; do
+  [[ -r "$SCRIPT_DIR/extensions/$file" ]] || die "Missing extensions/$file"
+done
+command -v python3 >/dev/null || die "Python 3 is missing."
+[[ -x /usr/bin/python3 ]] || die "/usr/bin/python3 is missing."
+
+# Syntax-check runtime Python before installing. Avoid creating __pycache__.
+python3 - "$SCRIPT_DIR" <<'PY'
+import ast
+from pathlib import Path
+import sys
+
+root = Path(sys.argv[1]) / "extensions"
+for name in ("simple_menu.py", "network_inventory.py", "bomb_simulation.py",
+             "quick_scan.py", "autowifi_operator.py"):
+    path = root / name
+    ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+print("Verified: Python syntax of menu, scanner, simulation and console.")
+PY
+
 mkdir -p "$CONFIG_DIR" "$BIN_DIR"
-install -m 0644 "$SCRIPT_DIR/extensions/simple_menu.py" "$CONFIG_DIR/simple_menu.py"
-install -m 0644 "$SCRIPT_DIR/extensions/network_inventory.py" "$CONFIG_DIR/network_inventory.py"
-# Refresh the direct survey runner too; setup-ai.sh is not needed for this fix.
+
+# Compatibility with existing AutoWIFI direct-runner and console. These
+# still use installed Python files, unlike the live menu launchers below.
 install -m 0644 "$SCRIPT_DIR/extensions/quick_scan.py" "$CONFIG_DIR/quick_scan.py"
-install -m 0644 "$SCRIPT_DIR/extensions/bomb_simulation.py" "$CONFIG_DIR/bomb_simulation.py"
-# Refresh existing AI console's command routing without rebuilding Ollama.
-if [[ -f "$SCRIPT_DIR/extensions/autowifi_operator.py" ]]; then
-  install -m 0644 "$SCRIPT_DIR/extensions/autowifi_operator.py" "$CONFIG_DIR/autowifi_operator.py"
-fi
-cat > "$BIN_DIR/autowifi-menu" <<'SH'
+install -m 0644 "$SCRIPT_DIR/extensions/autowifi_operator.py" "$CONFIG_DIR/autowifi_operator.py"
+
+# Live launchers: after bootstrapping once, git pull updates all three tools.
+write_live_launcher() {
+  local name="$1"
+  local pyfile="$2"
+  local quoted_file
+  printf -v quoted_file '%q' "$SCRIPT_DIR/extensions/$pyfile"
+  cat > "$BIN_DIR/$name" <<SH
 #!/usr/bin/env bash
 set -euo pipefail
-exec /usr/bin/python3 "$HOME/.config/autowifi-kali-setup/simple_menu.py" "$@"
+exec /usr/bin/python3 $quoted_file "\$@"
 SH
-chmod 0755 "$BIN_DIR/autowifi-menu"
-cat > "$BIN_DIR/autowifi-inventory" <<'SH'
-#!/usr/bin/env bash
-set -euo pipefail
-exec /usr/bin/python3 "$HOME/.config/autowifi-kali-setup/network_inventory.py" "$@"
-SH
-chmod 0755 "$BIN_DIR/autowifi-inventory"
-cat > "$BIN_DIR/autowifi-bomb" <<'SH'
-#!/usr/bin/env bash
-set -euo pipefail
-exec /usr/bin/python3 "$HOME/.config/autowifi-kali-setup/bomb_simulation.py" "$@"
-SH
-chmod 0755 "$BIN_DIR/autowifi-bomb"
-# A shorter launch command, without modifying system /usr/bin/ paths.
+  chmod 0755 "$BIN_DIR/$name"
+}
+write_live_launcher autowifi-menu simple_menu.py
+write_live_launcher autowifi-inventory network_inventory.py
+write_live_launcher autowifi-bomb bomb_simulation.py
+
 cat > "$BIN_DIR/wifi" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -50,14 +82,21 @@ SH
 chmod 0755 "$BIN_DIR/wifi"
 
 echo
-echo "Installed AutoWIFI simple menu."
-echo "Run: $BIN_DIR/wifi"
-echo "Or:  $BIN_DIR/autowifi-menu"
-echo "Menu choices: home devices, Ralink survey, adapter status, DSTIKE, AI chat, BOMB."
-echo "Edit saved Wi-Fi names anytime: $BIN_DIR/wifi networks"
-echo "Run the offline BOMB rehearsal: $BIN_DIR/wifi bomb"
-echo "Check your radios and drivers: $BIN_DIR/wifi doctor"
-echo "Review your last scans: $BIN_DIR/wifi reports"
-echo "Run a Wi-Fi scan: $BIN_DIR/wifi scan"
-echo "Advanced monitor-mode survey: $BIN_DIR/wifi monitor-scan"
-echo "Saved network names are local and survive git pull or reinstall."
+echo "Checking installed launchers (no hardware or Wi-Fi activity):"
+"$BIN_DIR/wifi" --version
+"$BIN_DIR/autowifi-inventory" --help >/dev/null
+"$BIN_DIR/autowifi-bomb" --help >/dev/null
+echo "  Menu, inventory and BOMB launchers: PASS"
+revision="$(git -C "$SCRIPT_DIR" rev-parse --short HEAD 2>/dev/null || true)"
+echo
+echo "Repository: $EXPECTED_REPO"
+echo "Branch: main   Commit: $revision"
+echo "Running directly from: $SCRIPT_DIR/extensions/"
+echo "Configuration remains local: $CONFIG_DIR"
+echo "Future updates: git pull --ff-only (then run wifi)"
+echo
+echo "Launch: $BIN_DIR/wifi"
+echo "Network scan: $BIN_DIR/wifi scan"
+echo "Adapter checks: $BIN_DIR/wifi doctor"
+echo "Version/source check: $BIN_DIR/wifi --version"
+echo "If 'wifi' launches another program, use the full path shown above."
