@@ -53,6 +53,30 @@ console router in place.
 You can also skip the menu using one-word actions such as
 \`wifi devices\`, \`wifi wireless\`, or \`wifi adapters\`.
 
+## More reliable nearby Wi-Fi network enumeration
+
+The **Wi-Fi survey (menu option 2)** now takes 75 seconds, shows the
+selected interface and a verified **access-point count**, and prints the
+actual observations reported by the `airodump-ng` scanner rather than a
+language-model summary.
+
+For the Ralink RT3070/RT2870 USB adapter, the survey specifies 2.4 GHz
+channels **1 through 11**, avoiding wasted time hopping unsupported 5 GHz
+frequencies. **The RT3070 cannot see 5 GHz or 6 GHz networks**: select a
+compatible Wi-Fi radio under option 3 to survey those bands. Other radio
+types use the scanner's normal channel selection.
+
+Run the updated survey from Kali:
+
+```bash
+cd ~/autowifi-kali-setup && git pull && bash setup-menu.sh && ~/.local/bin/wifi wireless
+```
+
+If just one AP is observed, verify that option 3 points to the intended
+radio, compare the result with your router's SSID/channel settings, and
+consider distance, hidden SSIDs, interference, and different bands.
+This is a passive survey; it does not probe credentials or disconnect clients.
+
 ## Choose which network interface AutoWIFI uses
 
 In the `wifi` menu, choose **3 — View / change LAN and Wi-Fi interfaces**.
