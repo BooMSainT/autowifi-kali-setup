@@ -349,12 +349,21 @@ def nearby_wifi() -> int:
     selected = choose_survey_radio()
     if not selected:
         return 1
+    radio = next((item for item in adapters() if item["name"] == selected), None)
+    ralink = bool(radio and radio["is_ralink"])
     print(f"\n=== Passive nearby Wi-Fi survey using {selected} ===")
-    print("This observes Wi-Fi access-point broadcasts. The survey tool may")
-    print("temporarily switch this radio into monitor mode and restore it afterward.")
-    print("No deauthentication frames are sent.")
-    return _run_program("autowifi-direct", "networks", "--interface", selected,
-                        "--duration", "20")
+    print("The deterministic airodump-ng tool will report actual observed APs,")
+    print("not AI-generated network names. No deauthentication frames are sent.")
+    print("This may temporarily use monitor mode; the scanner restores it afterward.")
+    duration = 75
+    args = ["networks", "--interface", selected, "--duration", str(duration)]
+    if ralink:
+        print("Ralink RT3070/2870: scanning 2.4 GHz channels 1–11 only.")
+        print("5 GHz and 6 GHz access points cannot appear on this adapter.")
+        args.extend(["--channels", ",".join(str(ch) for ch in range(1, 12))])
+    else:
+        print("Using this radio's supported Wi-Fi frequencies; band coverage varies.")
+    return _run_program("autowifi-direct", *args)
 
 
 ACTIONS = {
