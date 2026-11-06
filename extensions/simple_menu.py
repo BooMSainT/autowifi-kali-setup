@@ -868,11 +868,15 @@ OPTIONS = [
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="AutoWIFI simple menu and short commands")
-    parser.add_argument("--version", action="version",
-                        version=f"AutoWIFI Menu {MENU_VERSION} | source: {Path(__file__).resolve()}")
+    parser.add_argument("--version", action="store_true",
+                        help="Show menu version and exact Python source path")
     parser.add_argument("action", nargs="?", default="menu",
                         choices=("menu", *ACTIONS.keys()))
     args = parser.parse_args(argv)
+    if args.version:
+        print(f"AutoWIFI Menu {MENU_VERSION}")
+        print(f"Source: {Path(__file__).resolve()}")
+        return 0
     if args.action != "menu":
         return ACTIONS[args.action]()
     while True:
