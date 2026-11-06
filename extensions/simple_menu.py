@@ -653,26 +653,160 @@ def choose_survey_radio() -> str | None:
     return selected
 
 
-def nearby_wifi() -> int:
+def choose_inventory_radio() -> str | None:
+    """Choose an explicitly configured or identified radio for managed scanning.
+
+    A managed-mode scan does not change adapter mode. An already-associated
+    Wi-Fi uplink can be scanned by NetworkManager, though traffic may briefly
+    slow while it surveys channels.
+    """
+    radios = adapters()
+    preferred = load_settings()["wireless"]
+    if preferred:
+        item = next((radio for radio in radios if radio["name"] == preferred), None)
+        if item is None:
+            print(f"Selected Wi-Fi radio {preferred!r} is absent; option 3 can change it.")
+            return None
+    else:
+        matches = [radio for radio in radios if radio["is_ralink"]]
+        if len(matches) != 1:
+            print("AUTO needs exactly one detected Ralink radio for Wi-Fi discovery.")
+            print("Select your preferred Wi-Fi radio in menu option 3.")
+            return None
+        item = matches[0]
+    name = item["name"]
+    if item["mode"] != "managed":
+        print(f"{name} is in {item['mode']} mode. Managed-mode scanning needs a")
+        print("managed adapter. Use option 3 to select another Wi-Fi interface,")
+        print("or select the advanced monitor-mode survey from the scan menu.")
+        return None
+    print(f"Using {name} (managed-mode NetworkManager scan).")
+    if name == default_route():
+        print("This interface carries your current connection. A normal Wi-Fi")
+        print("rescan can briefly increase latency, but it won't change monitor mode.")
+    return name
+
+
+def _save_scanned_home_ssid(record: dict) -> bool:
+    """Only explicitly approved visible SSIDs can enter the BOMB home list."""
+    ssid = record.get("ssid", "")
+    if ssid in ("", "<hidden>"):
+        print("This AP does not broadcast a usable name; no SSID was saved.")
+        return False
+    try:
+        if input(f"Is {ssid!r} one of YOUR home networks? Add it? [y/N]: ").strip().lower() != "y":
+            print("Not added.")
+            return False
+    except (EOFError, KeyboardInterrupt):
+        print("\nNot added.")
+        return False
+    # Existing BOMB module contains only local configuration and offline
+    # simulation helpers. It does not send traffic or change Wi-Fi interfaces.
+    try:
+        import bomb_simulation as bomb
+        current = bomb.load_networks()
+        if ssid in current:
+            print("Already saved in your BOMB home-network list.")
+            return True
+        bomb.save_networks(bomb.add_network(current, ssid))
+    except (ValueError, OSError, ImportError) as exc:
+        print(f"Could not save SSID: {exc}")
+        return False
+    print(f"Saved {ssid!r} as an explicitly selected home network.")
+    return True
+
+
+def post_scan_choices(report: dict, rescan=None) -> int:
+    """Give numbered next steps after scan, without starting an attack."""
+    observations = report.get("access_points") or []
+    while True:
+        print("\n=== CHOOSE A NETWORK OR NEXT ACTION ===")
+        if observations:
+            for n, item in enumerate(observations, 1):
+                print(f"  {n}. {item['ssid']} | channel {item['channel']} | "
+                      f"{item['power']} | {item['encryption']}")
+        else:
+            print("  No verified networks in this scan.")
+            print("  That does not establish that no networks exist.")
+        print("  R. Rescan this adapter")
+        print("  D. Diagnose adapters and Wi-Fi support")
+        print("  M. Advanced monitor-mode survey (may require sudo)")
+        print("  B. Back to main menu")
+        try:
+            choice = input("\nChoose a network number or R/D/M/B: ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return 0
+        if choice in ("b", "q", "0", ""):
+            return 0
+        if choice == "r":
+            return rescan() if rescan else nearby_wifi()
+        if choice == "d":
+            doctor()
+            continue
+        if choice == "m":
+            return advanced_monitor_survey()
+        if not choice.isdecimal() or not 1 <= int(choice) <= len(observations):
+            print("Choose one of the listed numbers or actions.")
+            continue
+
+        item = observations[int(choice) - 1]
+        print("\n=== OBSERVED ACCESS POINT ===")
+        print(f"  SSID: {item['ssid']}")
+        print(f"  BSSID: {item['bssid']}")
+        print(f"  Channel: {item['channel']}")
+        print(f"  Signal: {item['power']}")
+        print(f"  Security advertised: {item['encryption']}")
+        print("  This is an observation, not proof of network ownership or a vulnerability.")
+        print("\n  A. Add this SSID to MY saved home-network list")
+        print("  L. Return to the network list")
+        print("  B. Back to main menu")
+        try:
+            action = input("Choose A/L/B: ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return 0
+        if action == "a":
+            _save_scanned_home_ssid(item)
+        elif action == "b":
+            return 0
+
+
+def advanced_monitor_survey() -> int:
+    """Optional, explicit monitor-mode survey. Never the default discovery path."""
     selected = choose_survey_radio()
     if not selected:
         return 1
     radio = next((item for item in adapters() if item["name"] == selected), None)
     ralink = bool(radio and radio["is_ralink"])
-    print(f"\n=== Passive nearby Wi-Fi survey using {selected} ===")
-    print("The deterministic airodump-ng tool will report actual observed APs,")
-    print("not AI-generated network names. No deauthentication frames are sent.")
-    print("This may temporarily use monitor mode; the scanner restores it afterward.")
-    duration = 75
-    args = ["networks", "--interface", selected, "--duration", str(duration)]
+    print(f"\n=== ADVANCED MONITOR-MODE SURVEY — {selected} ===")
+    print("This may temporarily change radio mode and requires sudo authentication.")
+    args = ["networks", "--interface", selected, "--duration", "75"]
     if ralink:
-        print("Ralink RT3070/2870: scanning 2.4 GHz channels 1–11 only.")
-        print("5 GHz and 6 GHz access points cannot appear on this adapter.")
         args.extend(["--channels", ",".join(str(ch) for ch in range(1, 12))])
-    else:
-        print("Using this radio's supported Wi-Fi frequencies; band coverage varies.")
-    return _run_recorded("autowifi-direct", *args,
-                         kind="wifi", interface=selected)
+    recorded: list[dict] = []
+    code = _run_recorded("autowifi-direct", *args, kind="wifi",
+                         interface=selected, report_out=recorded)
+    if recorded:
+        return post_scan_choices(recorded[-1])
+    return code
+
+
+def nearby_wifi() -> int:
+    """Default Wi-Fi inventory with a real, post-scan interactive network list."""
+    selected = choose_inventory_radio()
+    if not selected:
+        # User can change the selected adapter in option 3.
+        return 1
+    print("\n=== WI-FI NETWORK DISCOVERY (managed mode) ===")
+    print("Using a normal NetworkManager scan, not deauthentication or monitor mode.")
+    recorded: list[dict] = []
+    status = _run_recorded("autowifi-inventory", "--interface", selected,
+                           kind="wifi", interface=selected, report_out=recorded)
+    if not recorded:
+        print("No results could be recorded. Try wifi doctor.")
+        return status or 1
+    return post_scan_choices(recorded[-1], rescan=nearby_wifi)
 
 
 ACTIONS = {
@@ -689,6 +823,7 @@ ACTIONS = {
     "status": doctor,
     "reports": recent_reports,
     "scan": nearby_wifi,
+    "monitor-scan": advanced_monitor_survey,
     "audit": connected_devices,
 }
 
