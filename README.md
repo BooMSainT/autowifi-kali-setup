@@ -4,6 +4,47 @@ Installs a local `~/AutoWIFI` checkout with pipx and adds an optional local AI o
 
 Use AutoWIFI only on networks you own or have explicit permission to test.
 
+## New: selectable Wi-Fi results and reliable default scanning
+
+**Menu option 2** and `wifi scan` now use a normal **NetworkManager Wi-Fi
+scan** on your selected radio first, rather than immediately switching the
+adapter into monitor mode. The command is `nmcli` and does not require sudo
+in a working NetworkManager setup. Depending on the radio and network,
+NetworkManager may transmit normal discovery probes; it does not send
+deauthentication frames or drop clients intentionally.
+
+After scanning, AutoWIFI shows a numbered access-point list and lets you:
+
+- Select a network to inspect its **SSID, BSSID, channel, advertised security,
+  and observed signal percentage**.
+- Press **A** on that network to add its SSID to your saved BOMB home-network
+  list **only after confirming it belongs to you**.
+- Press **R** to rescan, **D** for diagnostics, **M** for the optional advanced
+  monitor-mode survey (which may require sudo), or **B** to return.
+
+The existing **BOMB** option 7 now offers **Scan and select my own SSIDs**
+when your saved list is empty, or manual entry as before. It does not include
+any neighboring SSID automatically and still performs offline simulated
+alerts only.
+
+**Important:** option 2 requires a Wi-Fi interface in **managed mode** and
+NetworkManager to be available. If the Ralink adapter is in monitor mode,
+the menu will explain the conflict and offer the advanced scanner. A
+NetworkManager failure is shown as a **failed scan**, not falsely described
+as zero networks. In the diagnostics (`wifi doctor`) you can also view
+NetworkManager device status and `rfkill` blocking state.
+
+The advanced monitor-mode survey remains available at
+`wifi monitor-scan`. Its sudo password request is now performed in the
+original terminal before launching the scan. Normal managed-mode scans
+should not require a sudo prompt.
+
+Refresh with the same command:
+
+```bash
+cd ~/autowifi-kali-setup && git pull && bash setup-menu.sh && ~/.local/bin/wifi
+```
+
 ## AutoWIFI reliability improvements
 
 The enhanced menu now offers:

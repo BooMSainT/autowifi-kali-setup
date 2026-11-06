@@ -11,6 +11,7 @@ import argparse
 from datetime import datetime, timezone
 import json
 import os
+import subprocess
 from pathlib import Path
 import tempfile
 import uuid
@@ -180,15 +181,33 @@ def run_simulation(path: Path = CONFIG_PATH, report_dir: Path = REPORT_DIR) -> i
     names = load_networks(path)
     if not names:
         print("No home Wi-Fi names saved for BOMB yet.")
-        print("Add them using menu option 8 or: wifi networks")
+        print("Choose how to add your own networks:")
+        print("  1. Scan nearby Wi-Fi and SELECT which SSIDs are mine")
+        print("  2. Enter my home network names manually")
+        print("  0. Back")
         try:
-            if input("Edit the saved networks now? [y/N]: ").strip().lower() != "y":
-                return 1
+            choice = input("Choice: ").strip().lower()
         except (EOFError, KeyboardInterrupt):
             return 1
-        manage_networks(path)
+        if choice in ("1", "s", "scan"):
+            # Use the same numbered network picker as menu option 2.
+            # Nothing discovered is automatically marked as user-owned.
+            menu = Path.home() / ".local/bin/autowifi-menu"
+            if not menu.is_file():
+                print("AutoWIFI menu is not installed. Run bash setup-menu.sh first.")
+                return 1
+            try:
+                subprocess.run([str(menu), "scan"], check=False)
+            except OSError as exc:
+                print(f"Could not launch the network picker: {exc}")
+                return 1
+        elif choice in ("2", "m", "manual", "y"):
+            manage_networks(path)
+        else:
+            return 1
         names = load_networks(path)
         if not names:
+            print("No explicitly selected home SSIDs were saved; nothing simulated.")
             return 1
     print_networks(names)
     print("\nOFFLINE SIMULATION ONLY: mock alerts for the saved SSIDs, in order.")

@@ -59,26 +59,33 @@ phy#0
         ]), patch.object(menu, "default_route", return_value="wlan2"):
             self.assertIsNone(menu.choose_survey_radio())
 
-    def test_passive_survey_uses_selected_ralink_on_2_4_channels(self):
+    def test_managed_scan_uses_selected_interface_and_postscan_choices(self):
+        with patch.object(menu, "choose_inventory_radio", return_value="wlan2"), \
+             patch.object(menu, "_run_recorded", return_value=0) as run, \
+             patch.object(menu, "post_scan_choices", return_value=0) as picker:
+            def record(*args, **kwargs):
+                kwargs["report_out"].append({"access_points": []})
+                return 0
+            run.side_effect = record
+            self.assertEqual(menu.nearby_wifi(), 0)
+            run.assert_called_once_with(
+                "autowifi-inventory", "--interface", "wlan2",
+                kind="wifi", interface="wlan2", report_out=run.call_args.kwargs["report_out"]
+            )
+            picker.assert_called_once()
+
+    def test_advanced_monitor_scan_remains_explicit(self):
         with patch.object(menu, "choose_survey_radio", return_value="wlan2"), \
              patch.object(menu, "adapters", return_value=[
                  {"name": "wlan2", "mode": "managed", "is_ralink": True}
              ]), patch.object(menu, "_run_recorded", return_value=0) as run:
-            self.assertEqual(menu.nearby_wifi(), 0)
-            run.assert_called_once_with("autowifi-direct", "networks",
-                                        "--interface", "wlan2", "--duration", "75",
-                                        "--channels", "1,2,3,4,5,6,7,8,9,10,11",
-                                        kind="wifi", interface="wlan2")
-
-    def test_survey_other_radio_does_not_force_2_4_ghz(self):
-        with patch.object(menu, "choose_survey_radio", return_value="wlan0"), \
-             patch.object(menu, "adapters", return_value=[
-                 {"name": "wlan0", "mode": "managed", "is_ralink": False}
-             ]), patch.object(menu, "_run_recorded", return_value=0) as run:
-            self.assertEqual(menu.nearby_wifi(), 0)
-            run.assert_called_once_with("autowifi-direct", "networks",
-                                        "--interface", "wlan0", "--duration", "75",
-                                        kind="wifi", interface="wlan0")
+            self.assertEqual(menu.advanced_monitor_survey(), 0)
+            run.assert_called_once_with(
+                "autowifi-direct", "networks", "--interface", "wlan2",
+                "--duration", "75",
+                "--channels", "1,2,3,4,5,6,7,8,9,10,11",
+                kind="wifi", interface="wlan2", report_out=run.call_args.kwargs["report_out"],
+            )
 
     def test_home_device_audit_uses_lan_scanner(self):
         with patch.object(menu, "default_route", return_value="eth0"), \
