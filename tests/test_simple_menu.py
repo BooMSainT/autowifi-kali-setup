@@ -191,6 +191,8 @@ phy#0
             "which antenna is being used": ("autowifi-menu", "adapters"),
             "change my network interface": ("autowifi-menu", "adapters"),
             "switch wifi adapter": ("autowifi-menu", "adapters"),
+            "diagnose wifi issues": ("autowifi-menu", "doctor"),
+            "show last scan results": ("autowifi-menu", "history"),
         }
         for phrase, (command, action) in requests.items():
             with self.subTest(phrase=phrase):
