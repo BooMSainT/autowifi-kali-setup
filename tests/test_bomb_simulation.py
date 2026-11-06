@@ -62,6 +62,33 @@ class BombTests(unittest.TestCase):
             self.assertEqual(result, 1)
             self.assertFalse((root / "reports").exists())
 
+    def test_empty_bomb_list_offers_scan_and_requires_manual_selection(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config = root / "private-bomb-networks.json"
+            reports = root / "reports"
+            launcher = root / ".local/bin/autowifi-menu"
+            launcher.parent.mkdir(parents=True)
+            launcher.write_text("#!/bin/sh\n")
+
+            def simulate_manual_selection(*args, **kwargs):
+                self.assertEqual(args[0], [str(launcher), "scan"])
+                # Emulate a deliberate post-scan selection, never auto-add.
+                bomb.save_networks(["MyHomeWiFi"], config)
+                return None
+
+            with patch.object(bomb.Path, "home", return_value=root), \
+                 patch.object(bomb.subprocess, "run",
+                              side_effect=simulate_manual_selection) as scan, \
+                 patch("builtins.input", side_effect=["1", "y"]):
+                self.assertEqual(bomb.run_simulation(config, reports), 0)
+            scan.assert_called_once()
+            files = list(reports.glob("bomb-*.json"))
+            self.assertEqual(len(files), 1)
+            report = json.loads(files[0].read_text())
+            self.assertEqual([n["ssid"] for n in report["networks"]], ["MyHomeWiFi"])
+            self.assertTrue(report["simulation_only"])
+
     def test_invalid_and_duplicate_names_rejected(self):
         for value in ("", "x" * 33, "Home\nGuest"):
             with self.subTest(value=value):
