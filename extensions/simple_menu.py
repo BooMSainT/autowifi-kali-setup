@@ -28,6 +28,7 @@ RALINK_USB_IDS = {("148f", "3070"), ("148f", "2870")}
 BIN_DIR = Path.home() / ".local" / "bin"
 REPORT_DIR = Path.home() / ".local/share/autowifi/menu-reports"
 MAX_REPORT_OUTPUT = 512_000
+MENU_VERSION = "2026.11.06.2"
 CONFIG_PATH = Path.home() / ".config/autowifi-kali-setup/interface-selection.json"
 INTERFACE_NAME = re.compile(r"^[a-zA-Z0-9_.:-]{1,32}$")
 
@@ -529,6 +530,11 @@ def radio_bands(interface: str) -> list[str]:
 def doctor() -> int:
     """Read-only, actionable diagnostics; no sudo or interface mode changes."""
     print("\n=== AutoWIFI Diagnostics (read-only) ===")
+    print(f"  Menu version: {MENU_VERSION}")
+    print(f"  Running Python from: {Path(__file__).resolve()}")
+    if Path(__file__).resolve().parent.name != "extensions":
+        print("  WARNING: An installed Python copy is running, not Git source.")
+        print("  Refresh once: cd ~/autowifi-kali-setup && bash setup-menu.sh")
     dependencies = ["ip", "iw", "nmcli", "rfkill", "nmap", "airmon-ng", "airodump-ng"]
     for dependency in dependencies:
         print(f"  {dependency}: {'installed' if shutil.which(dependency) else 'MISSING'}")
@@ -862,6 +868,8 @@ OPTIONS = [
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="AutoWIFI simple menu and short commands")
+    parser.add_argument("--version", action="version",
+                        version=f"AutoWIFI Menu {MENU_VERSION} | source: {Path(__file__).resolve()}")
     parser.add_argument("action", nargs="?", default="menu",
                         choices=("menu", *ACTIONS.keys()))
     args = parser.parse_args(argv)
@@ -869,7 +877,7 @@ def main(argv: list[str] | None = None) -> int:
         return ACTIONS[args.action]()
     while True:
         print("\n" + "=" * 52)
-        print(" AUTOWIFI  |  Home Network & Antenna")
+        print(f" AUTOWIFI  |  Home Network & Antenna  |  v{MENU_VERSION}")
         print("=" * 52)
         for number, label, _ in OPTIONS:
             print(f"  {number}. {label}")
