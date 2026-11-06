@@ -15,6 +15,8 @@ if [[ ! -f "$SCRIPT_DIR/extensions/simple_menu.py" || ! -f "$SCRIPT_DIR/extensio
 fi
 mkdir -p "$CONFIG_DIR" "$BIN_DIR"
 install -m 0644 "$SCRIPT_DIR/extensions/simple_menu.py" "$CONFIG_DIR/simple_menu.py"
+# Refresh the direct survey runner too; setup-ai.sh is not needed for this fix.
+install -m 0644 "$SCRIPT_DIR/extensions/quick_scan.py" "$CONFIG_DIR/quick_scan.py"
 install -m 0644 "$SCRIPT_DIR/extensions/bomb_simulation.py" "$CONFIG_DIR/bomb_simulation.py"
 # Refresh existing AI console's command routing without rebuilding Ollama.
 if [[ -f "$SCRIPT_DIR/extensions/autowifi_operator.py" ]]; then
