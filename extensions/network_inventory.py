@@ -42,7 +42,7 @@ def parse_nmcli(output: str) -> list[dict]:
     """Use only grounded NM scan rows; deduplicate by BSSID."""
     found: dict[str, dict] = {}
     for line in output.splitlines():
-        values = split_nmcli_line(line.strip())
+        values = split_nmcli_line(line.rstrip("\r\n"))
         if len(values) < 6:
             continue
         ssid, bssid, channel, frequency, signal = values[:5]
