@@ -4,6 +4,40 @@ Installs a local `~/AutoWIFI` checkout with pipx and adds an optional local AI o
 
 Use AutoWIFI only on networks you own or have explicit permission to test.
 
+## AutoWIFI reliability improvements
+
+The enhanced menu now offers:
+
+- **9 — Diagnose adapters, connectivity and missing tools:** checks available
+  interfaces, saved adapter preferences, radio band capabilities and required
+  utilities, without transmitting traffic or changing Linux settings.
+- **10 — View saved LAN and Wi-Fi scan reports:** shows the last 10 timestamped
+  results and lets you inspect a previous run without scanning again.
+- **Live scan progress:** a status message every 10 seconds while waiting for
+  the deterministic AutoWIFI scanner, with an interruptible Ctrl+C workflow.
+- **Private reports:** scan output and parsed access-point rows stored under
+  `~/.local/share/autowifi/menu-reports/` (directory permissions 0700,
+  reports 0600). Recorded SSIDs and MAC addresses stay on your Kali machine.
+- **Fail-closed wireless selection:** if a wireless interface's association
+  state cannot be verified, the menu will not switch it into monitor mode.
+  Use option 3 to choose a known idle adapter.
+
+One-time refresh (does **not** reinstall Kali or download AI models):
+
+```bash
+cd ~/autowifi-kali-setup && git pull && bash setup-menu.sh && ~/.local/bin/wifi
+```
+
+After that, common shortcuts are `wifi`, `wifi scan`, `wifi audit`,
+`wifi adapters`, `wifi doctor`, and `wifi reports`.
+
+**Interpretation:** a report's access-point count reflects only what a radio
+actually observed. A 2.4 GHz-only RT3070 will not show a 5 GHz or 6 GHz
+SSID, and a successful scan does not prove no other networks exist.
+The diagnostic distinguishes supported PHY bands where Kali exposes
+that information; unsupported or inaccessible PHY details are marked
+unknown rather than guessed.
+
 ## One-command menu for home-network auditing
 
 The new **simple menu** avoids memorizing Kali commands and keeps LAN discovery
@@ -26,6 +60,8 @@ AUTOWIFI | Home Network & Antenna
 6. Open AutoWIFI AI chat
 7. BOMB: simulate incidents for saved home networks
 8. Edit BOMB networks (add / rename / delete SSIDs)
+9. Diagnose adapters and missing tools
+10. View recent LAN and Wi-Fi scan reports
 0. Exit
 ```
 

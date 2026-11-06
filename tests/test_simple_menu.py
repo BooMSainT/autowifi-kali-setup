@@ -43,7 +43,8 @@ phy#0
         with patch.object(menu, "adapters", return_value=[
             {"name": "wlan0", "mode": "managed", "is_ralink": False},
             {"name": "wlan2", "mode": "managed", "is_ralink": True},
-        ]), patch.object(menu, "default_route", return_value="wlan0"):
+        ]), patch.object(menu, "default_route", return_value="wlan0"), \
+             patch.object(menu, "_probe_wifi_link", return_value="disconnected"):
             self.assertEqual(menu.choose_survey_radio(), "wlan2")
 
     def test_no_ralink_does_not_fallback_to_internal(self):
@@ -62,26 +63,28 @@ phy#0
         with patch.object(menu, "choose_survey_radio", return_value="wlan2"), \
              patch.object(menu, "adapters", return_value=[
                  {"name": "wlan2", "mode": "managed", "is_ralink": True}
-             ]), patch.object(menu, "_run_program", return_value=0) as run:
+             ]), patch.object(menu, "_run_recorded", return_value=0) as run:
             self.assertEqual(menu.nearby_wifi(), 0)
             run.assert_called_once_with("autowifi-direct", "networks",
                                         "--interface", "wlan2", "--duration", "75",
-                                        "--channels", "1,2,3,4,5,6,7,8,9,10,11")
+                                        "--channels", "1,2,3,4,5,6,7,8,9,10,11",
+                                        kind="wifi", interface="wlan2")
 
     def test_survey_other_radio_does_not_force_2_4_ghz(self):
         with patch.object(menu, "choose_survey_radio", return_value="wlan0"), \
              patch.object(menu, "adapters", return_value=[
                  {"name": "wlan0", "mode": "managed", "is_ralink": False}
-             ]), patch.object(menu, "_run_program", return_value=0) as run:
+             ]), patch.object(menu, "_run_recorded", return_value=0) as run:
             self.assertEqual(menu.nearby_wifi(), 0)
             run.assert_called_once_with("autowifi-direct", "networks",
-                                        "--interface", "wlan0", "--duration", "75")
+                                        "--interface", "wlan0", "--duration", "75",
+                                        kind="wifi", interface="wlan0")
 
     def test_home_device_audit_uses_lan_scanner(self):
         with patch.object(menu, "default_route", return_value="eth0"), \
-             patch.object(menu, "_run_program", return_value=0) as run:
+             patch.object(menu, "_run_recorded", return_value=0) as run:
             self.assertEqual(menu.connected_devices(), 0)
-            run.assert_called_once_with("autowifi-devices")
+            run.assert_called_once_with("autowifi-devices", kind="lan", interface="eth0")
 
     def test_saved_interfaces_persist_locally_and_permissions_are_private(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -123,15 +126,16 @@ phy#0
         with patch.object(menu, "load_settings", return_value={"lan": "eth0", "wireless": ""}), \
              patch.object(menu, "lan_interfaces", return_value=[
                  {"name": "eth0", "subnet": "192.168.1.0/24"}
-             ]), patch.object(menu, "_run_program", return_value=0) as run:
+             ]), patch.object(menu, "_run_recorded", return_value=0) as run:
             self.assertEqual(menu.connected_devices(), 0)
-            run.assert_called_once_with("autowifi-devices", "--interface", "eth0")
+            run.assert_called_once_with("autowifi-devices", "--interface", "eth0",
+                                        kind="lan", interface="eth0")
 
     def test_missing_selected_lan_does_not_fallback(self):
         with patch.object(menu, "load_settings", return_value={"lan": "eth0", "wireless": ""}), \
              patch.object(menu, "lan_interfaces", return_value=[
                  {"name": "wlan0", "subnet": "192.168.1.0/24"}
-             ]), patch.object(menu, "_run_program") as run:
+             ]), patch.object(menu, "_run_recorded") as run:
             self.assertEqual(menu.connected_devices(), 1)
             run.assert_not_called()
 
@@ -143,7 +147,7 @@ phy#0
         with patch.object(menu, "load_settings", return_value={"lan": "", "wireless": "wlan0"}), \
              patch.object(menu, "adapters", return_value=radios), \
              patch.object(menu, "default_route", return_value="eth0"), \
-             patch.object(menu, "_capture", return_value="Not connected."):
+             patch.object(menu, "_probe_wifi_link", return_value="disconnected"):
             self.assertEqual(menu.choose_survey_radio(), "wlan0")
 
     def test_wifi_survey_does_not_switch_connected_radio(self):
@@ -151,7 +155,7 @@ phy#0
              patch.object(menu, "adapters", return_value=[
                  {"name": "wlan0", "mode": "managed", "is_ralink": False}
              ]), patch.object(menu, "default_route", return_value="eth0"), \
-             patch.object(menu, "_capture", return_value="Connected to 00:11:22:33:44:55"):
+             patch.object(menu, "_probe_wifi_link", return_value="connected"):
             self.assertIsNone(menu.choose_survey_radio())
 
     def test_stale_wifi_selection_does_not_fallback_to_other_radio(self):
@@ -187,6 +191,8 @@ phy#0
             "which antenna is being used": ("autowifi-menu", "adapters"),
             "change my network interface": ("autowifi-menu", "adapters"),
             "switch wifi adapter": ("autowifi-menu", "adapters"),
+            "diagnose wifi issues": ("autowifi-menu", "doctor"),
+            "show last scan results": ("autowifi-menu", "history"),
         }
         for phrase, (command, action) in requests.items():
             with self.subTest(phrase=phrase):

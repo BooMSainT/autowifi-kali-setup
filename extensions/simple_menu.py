@@ -8,18 +8,26 @@ The ESP8266 is its own separate USB-serial radio, not this adapter.
 from __future__ import annotations
 
 import argparse
+from datetime import datetime, timezone
 import ipaddress
 import json
 import os
+import queue
 from pathlib import Path
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
+import threading
+import time
+import uuid
 
 RALINK_USB_IDS = {("148f", "3070"), ("148f", "2870")}
 BIN_DIR = Path.home() / ".local" / "bin"
+REPORT_DIR = Path.home() / ".local/share/autowifi/menu-reports"
+MAX_REPORT_OUTPUT = 512_000
 CONFIG_PATH = Path.home() / ".config/autowifi-kali-setup/interface-selection.json"
 INTERFACE_NAME = re.compile(r"^[a-zA-Z0-9_.:-]{1,32}$")
 
@@ -194,7 +202,10 @@ def show_adapters() -> None:
     for item in radios:
         role = "Ralink USB" if item["is_ralink"] else "Other wireless radio"
         note = " [DEFAULT ROUTE — protect connection]" if item["name"] == route else ""
-        print(f"  {item['name']}: {item['mode']}, {item['usb_id']}, {role}{note}")
+        bands = radio_bands(item["name"])
+        supported = ", ".join(bands) if bands else "band information unavailable"
+        print(f"  {item['name']}: {item['mode']}, {item['usb_id']}, "
+              f"{role}, bands: {supported}{note}")
     print("\nEthernet (eth0) can be used for LAN discovery but NOT Wi-Fi radio surveys.")
     print("Changing these selections does not change Linux's default route or Wi-Fi connection.")
 
@@ -268,6 +279,279 @@ def adapter_settings() -> int:
             print("An in-use Wi-Fi uplink remains protected from monitor-mode changes.")
 
 
+def _write_report(data: dict, directory: Path | None = None) -> Path:
+    """Store private machine-readable observations without modifying Git."""
+    target = directory or REPORT_DIR
+    target.mkdir(parents=True, exist_ok=True, mode=0o700)
+    target.chmod(0o700)
+    date = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    path = target / f"{date}-{uuid.uuid4().hex[:8]}.json"
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", dir=target,
+            prefix=".menu-report-", suffix=".tmp", delete=False
+        ) as file:
+            temporary = Path(file.name)
+            os.fchmod(file.fileno(), 0o600)
+            json.dump(data, file, indent=2, ensure_ascii=False)
+            file.write("\n")
+            file.flush()
+            os.fsync(file.fileno())
+        os.replace(temporary, path)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+    return path
+
+
+def parse_report_summary(kind: str, output: str) -> dict:
+    """Extract only verifiable values from deterministic tool output."""
+    result: dict = {"count": None, "access_points": []}
+    marker = "Access points detected:" if kind == "wifi" else "Devices:"
+    for line in output.splitlines():
+        if line.startswith(marker):
+            match = re.fullmatch(r"\s*(\d+)\s*", line[len(marker):])
+            if match:
+                result["count"] = int(match.group(1))
+                break
+    if kind != "wifi":
+        return result
+    started = False
+    for line in output.splitlines():
+        if line.strip() == "POWER\tBSSID\tCHANNEL\tENCRYPTION\tSSID":
+            started = True
+            continue
+        if not started:
+            continue
+        parts = line.split("\t", 4)
+        if len(parts) != 5:
+            if line.strip() and result["access_points"]:
+                break
+            continue
+        power, bssid, channel, encryption, ssid = parts
+        if not re.fullmatch(r"(?:[0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}", bssid):
+            continue
+        result["access_points"].append({
+            "power": power, "bssid": bssid,
+            "channel": channel, "encryption": encryption, "ssid": ssid,
+        })
+    return result
+
+
+def _run_recorded(name: str, *args: str, kind: str, interface: str) -> int:
+    """Show live tool output, a heartbeat, and a private timestamped result."""
+    path = BIN_DIR / name
+    executable = str(path) if path.is_file() else shutil.which(name)
+    if not executable:
+        print(f"Missing {name}. Install AutoWIFI first.")
+        return 1
+
+    cmd = [executable, *args]
+    print("Running the deterministic AutoWIFI tool. Ctrl+C stops this check.", flush=True)
+    started = datetime.now(timezone.utc).isoformat()
+    lines: list[str] = []
+    bytes_seen = 0
+    truncated = False
+    status = 1
+    proc = None
+    try:
+        proc = subprocess.Popen(
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            text=True, bufsize=1, start_new_session=True,
+        )
+        output: queue.Queue[str | None] = queue.Queue()
+
+        def read_lines() -> None:
+            if proc.stdout is not None:
+                for line in proc.stdout:
+                    output.put(line)
+            output.put(None)
+
+        threading.Thread(target=read_lines, daemon=True).start()
+        done = False
+        next_heartbeat = time.monotonic() + 10
+        while not done:
+            try:
+                line = output.get(timeout=0.5)
+                if line is None:
+                    done = True
+                else:
+                    print(line, end="", flush=True)
+                    size = len(line.encode("utf-8"))
+                    if bytes_seen + size <= MAX_REPORT_OUTPUT:
+                        lines.append(line)
+                        bytes_seen += size
+                    else:
+                        truncated = True
+            except queue.Empty:
+                pass
+            if time.monotonic() >= next_heartbeat and proc.poll() is None:
+                print("Scan is still running; live results will appear when ready.",
+                      flush=True)
+                next_heartbeat = time.monotonic() + 10
+        status = proc.wait()
+    except KeyboardInterrupt:
+        print("\nStopping the scan...", flush=True)
+        if proc is not None and proc.poll() is None:
+            os.killpg(proc.pid, signal.SIGTERM)
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                os.killpg(proc.pid, signal.SIGKILL)
+                proc.wait()
+        status = 130
+    except OSError as exc:
+        print(f"Unable to launch {name}: {exc}")
+        status = 1
+
+    report_output = "".join(lines)
+    values = parse_report_summary(kind, report_output)
+    record = {
+        "version": 1, "timestamp": started, "kind": kind,
+        "interface": interface, "command_name": name,
+        "arguments": list(args), "exit_code": status,
+        "count": values["count"],
+        "access_points": values["access_points"],
+        "output_truncated": truncated,
+        "raw_output": report_output,
+    }
+    try:
+        report = _write_report(record)
+        print(f"\nSaved private {kind} report: {report}")
+    except OSError as exc:
+        print(f"Could not save report: {exc}")
+    if status:
+        print(f"The check ended with exit code {status}. Review the output above.")
+    elif values["count"] is None:
+        print("The tool returned success, but no verifiable count was found.")
+    return status
+
+
+def recent_reports() -> int:
+    """Read only past reports from our app directory; never run stored commands."""
+    if not REPORT_DIR.exists():
+        print("No saved reports yet. Run menu option 1 or 2 first.")
+        return 0
+    files = sorted(REPORT_DIR.glob("*.json"), key=lambda f: f.name, reverse=True)[:10]
+    if not files:
+        print("No saved reports yet. Run menu option 1 or 2 first.")
+        return 0
+    print("\n=== Recent AutoWIFI reports ===")
+    records: list[tuple[Path, dict]] = []
+    for file in files:
+        try:
+            report = json.loads(file.read_text(encoding="utf-8"))
+            if not isinstance(report, dict) or report.get("version") != 1:
+                raise ValueError("Unknown report version")
+        except (OSError, ValueError):
+            continue
+        records.append((file, report))
+        count = report.get("count")
+        summary = "not established" if count is None else str(count)
+        print(f"  {len(records)}. {report.get('timestamp', '?')}: "
+              f"{report.get('kind', '?')} on {report.get('interface', '?')} — "
+              f"{summary} observed, exit {report.get('exit_code', '?')}")
+    if not records:
+        print("No readable reports found.")
+        return 0
+    try:
+        selection = input("Number to view full output (Enter to return): ").strip()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return 0
+    if not selection:
+        return 0
+    if not selection.isdecimal() or not 1 <= int(selection) <= len(records):
+        print("Invalid report number.")
+        return 1
+    _, report = records[int(selection) - 1]
+    print("\n=== Saved observation (not a live scan) ===")
+    print(report.get("raw_output") or "(No output captured)")
+    return 0
+
+
+def _probe_wifi_link(interface: str) -> str:
+    """Fail closed: unknown association state must not be treated as free radio."""
+    try:
+        proc = subprocess.run(
+            ["iw", "dev", interface, "link"],
+            text=True, capture_output=True, check=False, timeout=6,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return "unknown"
+    if proc.returncode != 0:
+        return "unknown"
+    response = proc.stdout.strip().lower()
+    if response.startswith("not connected"):
+        return "disconnected"
+    if response.startswith("connected to "):
+        return "connected"
+    return "unknown"
+
+
+def radio_bands(interface: str) -> list[str]:
+    """Best-effort per-PHY band detection from iw, not a global adapter guess."""
+    device_info = _capture(["iw", "dev", interface, "info"])
+    match = re.search(r"(?m)^\s*wiphy\s+(\d+)\s*$", device_info)
+    if not match:
+        return []
+    phy_info = _capture(["iw", "phy", f"phy{match.group(1)}", "info"])
+    frequencies = [int(v) for v in re.findall(r"\*\s+(\d{4})\s+MHz", phy_info)]
+    bands = []
+    if any(2400 <= v < 2500 for v in frequencies):
+        bands.append("2.4 GHz")
+    if any(4900 <= v < 5925 for v in frequencies):
+        bands.append("5 GHz")
+    if any(5925 <= v <= 7125 for v in frequencies):
+        bands.append("6 GHz")
+    return bands
+
+
+def doctor() -> int:
+    """Read-only, actionable diagnostics; no sudo or interface mode changes."""
+    print("\n=== AutoWIFI Diagnostics (read-only) ===")
+    dependencies = ["ip", "iw", "nmap", "airmon-ng", "airodump-ng"]
+    for dependency in dependencies:
+        print(f"  {dependency}: {'installed' if shutil.which(dependency) else 'MISSING'}")
+    for wrapper in ("autowifi-direct", "autowifi-devices", "autowifi-deauther"):
+        available = (BIN_DIR / wrapper).is_file() or shutil.which(wrapper)
+        print(f"  {wrapper}: {'installed' if available else 'MISSING'}")
+    route = default_route()
+    print(f"  Default LAN route: {route or 'not found'}")
+    try:
+        settings = load_settings()
+    except ValueError as exc:
+        print(f"  Saved interface settings: ERROR — {exc}")
+        print("  Correct them from menu option 3 after checking the local config file.")
+        return 2
+    print(f"  LAN selection: {settings['lan'] or 'AUTO'}")
+    print(f"  Wi-Fi radio selection: {settings['wireless'] or 'AUTO (Ralink preferred)'}")
+    connected = lan_interfaces()
+    if not connected:
+        print("  No eligible connected private LAN. Connect the laptop to your router.")
+    elif settings["lan"] and not any(x["name"] == settings["lan"] for x in connected):
+        print(f"  Selected LAN interface {settings['lan']} is not connected to a usable subnet.")
+    radios = adapters()
+    if not radios:
+        print("  No Wi-Fi radios reported by iw. Check the adapter driver or USB port.")
+    for radio in radios:
+        bands = radio_bands(radio["name"])
+        band_text = ", ".join(bands) if bands else "unknown"
+        association = "monitor mode" if radio["mode"] == "monitor" else _probe_wifi_link(radio["name"])
+        print(f"  {radio['name']}: {radio['mode']}, "
+              f"{'Ralink USB' if radio['is_ralink'] else radio['usb_id']}, "
+              f"bands: {band_text}, link: {association}")
+        if radio["is_ralink"]:
+            print("    RT3070-class adapters are 2.4 GHz only; 5/6 GHz SSIDs need another radio.")
+    if settings["wireless"] and not any(x["name"] == settings["wireless"] for x in radios):
+        print(f"  Selected Wi-Fi radio {settings['wireless']} is no longer present.")
+    print("  If you see only one AP, inspect the supported bands and select a different")
+    print("  interface under menu option 3; compare with your router's enabled SSIDs.")
+    print("  This diagnostic does not transmit frames or change any network settings.")
+    return 0
+
+
 def _run_program(name: str, *args: str) -> int:
     path = BIN_DIR / name
     executable = str(path) if path.is_file() else shutil.which(name)
@@ -297,10 +581,11 @@ def connected_devices() -> int:
             print("Not silently switching to another adapter.")
             return 1
         print(f"Using saved LAN interface: {selected}")
-        return _run_program("autowifi-devices", "--interface", selected)
+        return _run_recorded("autowifi-devices", "--interface", selected,
+                         kind="lan", interface=selected)
     print(f"Using AUTO private-LAN selection (system route: {route or 'not found'}).")
     print("The connected-device audit does not use a passive external antenna.")
-    return _run_program("autowifi-devices")
+    return _run_recorded("autowifi-devices", kind="lan", interface=route or "AUTO")
 
 
 def choose_survey_radio() -> str | None:
@@ -336,12 +621,17 @@ def choose_survey_radio() -> str | None:
         print("Connect via another interface or select another Wi-Fi radio.")
         return None
 
-    link = _capture(["iw", "dev", selected, "link"])
-    if "Connected to " in link:
-        print(f"{selected} is associated with a Wi-Fi network.")
-        print("Refusing to switch a connected Wi-Fi radio into monitor mode.")
-        print("Disconnect it first or select another radio in menu option 3.")
+    chosen = next((item for item in radios if item["name"] == selected), None)
+    if chosen is None:
+        print("Selected radio disappeared while checking it; no scan attempted.")
         return None
+    if chosen["mode"] != "monitor":
+        state = _probe_wifi_link(selected)
+        if state != "disconnected":
+            print(f"Cannot safely use {selected}: Wi-Fi association state is {state}.")
+            print("Only disconnected Wi-Fi adapters are eligible for monitor-mode scans.")
+            print("Choose another adapter under menu option 3; no changes made.")
+            return None
     return selected
 
 
@@ -363,7 +653,8 @@ def nearby_wifi() -> int:
         args.extend(["--channels", ",".join(str(ch) for ch in range(1, 12))])
     else:
         print("Using this radio's supported Wi-Fi frequencies; band coverage varies.")
-    return _run_program("autowifi-direct", *args)
+    return _run_recorded("autowifi-direct", *args,
+                         kind="wifi", interface=selected)
 
 
 ACTIONS = {
@@ -375,6 +666,12 @@ ACTIONS = {
     "ai": lambda: _run_program("autowifi-ai"),
     "bomb": lambda: _run_program("autowifi-bomb", "run"),
     "networks": lambda: _run_program("autowifi-bomb", "manage"),
+    "doctor": doctor,
+    "history": recent_reports,
+    "status": doctor,
+    "reports": recent_reports,
+    "scan": nearby_wifi,
+    "audit": connected_devices,
 }
 
 OPTIONS = [
@@ -386,6 +683,8 @@ OPTIONS = [
     ("6", "Open AutoWIFI AI chat", "ai"),
     ("7", "BOMB: simulate incidents for saved home networks", "bomb"),
     ("8", "Edit BOMB networks (add / rename / delete SSIDs)", "networks"),
+    ("9", "Diagnose adapters, connectivity and missing tools", "doctor"),
+    ("10", "View saved LAN and Wi-Fi scan reports", "history"),
 ]
 
 
@@ -414,7 +713,7 @@ def main(argv: list[str] | None = None) -> int:
         if selected:
             ACTIONS[selected]()
             continue
-        print("Unknown choice. Use 0-8.")
+        print("Unknown choice. Use 0-10.")
 
 
 if __name__ == "__main__":
