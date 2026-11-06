@@ -339,7 +339,8 @@ def parse_report_summary(kind: str, output: str) -> dict:
     return result
 
 
-def _run_recorded(name: str, *args: str, kind: str, interface: str) -> int:
+def _run_recorded(name: str, *args: str, kind: str, interface: str,
+                  report_out: list[dict] | None = None) -> int:
     """Show live tool output, a heartbeat, and a private timestamped result."""
     path = BIN_DIR / name
     executable = str(path) if path.is_file() else shutil.which(name)
@@ -348,6 +349,21 @@ def _run_recorded(name: str, *args: str, kind: str, interface: str) -> int:
         return 1
 
     cmd = [executable, *args]
+    # A scan that needs sudo must authenticate in the original controlling
+    # terminal. The scanner itself captures stdout and cannot serve as a tty.
+    if name in {"autowifi-direct", "autowifi-devices"} and sys.stdin.isatty():
+        if not shutil.which("sudo"):
+            print("sudo is missing; this scan requires elevated access.")
+            return 1
+        print("Kali may ask for your sudo password now:", flush=True)
+        try:
+            auth = subprocess.run(["sudo", "-v"], check=False)
+        except OSError as exc:
+            print(f"Could not request sudo access: {exc}")
+            return 1
+        if auth.returncode:
+            print("Sudo authentication failed. The scan was not started.")
+            return auth.returncode
     print("Running the deterministic AutoWIFI tool. Ctrl+C stops this check.", flush=True)
     started = datetime.now(timezone.utc).isoformat()
     lines: list[str] = []
@@ -358,7 +374,7 @@ def _run_recorded(name: str, *args: str, kind: str, interface: str) -> int:
     try:
         proc = subprocess.Popen(
             cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            text=True, bufsize=1, start_new_session=True,
+            text=True, bufsize=1, process_group=0,
         )
         output: queue.Queue[str | None] = queue.Queue()
 
@@ -416,6 +432,8 @@ def _run_recorded(name: str, *args: str, kind: str, interface: str) -> int:
         "output_truncated": truncated,
         "raw_output": report_output,
     }
+    if report_out is not None:
+        report_out.append(record)
     try:
         report = _write_report(record)
         print(f"\nSaved private {kind} report: {report}")
