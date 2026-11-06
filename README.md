@@ -20,7 +20,7 @@ the OS**. After installation, just type \`wifi\` or \`autowifi-menu\`:
 AUTOWIFI | Home Network & Antenna
 1. Find devices connected to my home network
 2. Scan nearby Wi-Fi using Ralink antenna adapter
-3. Show which Wi-Fi adapter / antenna AutoWIFI uses
+3. View / change LAN and Wi-Fi interfaces (eth0, wlan0...)
 4. Check DSTIKE ESP8266 USB connection
 5. Show saved DSTIKE Wi-Fi observations
 6. Open AutoWIFI AI chat
@@ -35,12 +35,14 @@ Wi-Fi\`, or \`which antenna is being used\`. The menu installer refreshes the
 console router in place.
 
 **Important distinction:**
-- **Connected devices** uses the interface on your private LAN (normally the
-  route to your router). The external Wi-Fi antenna is not needed for that.
+- **Connected devices** uses your saved LAN interface if configured, otherwise
+  automatically chooses a directly connected private LAN (usually your router).
+  An external Wi-Fi antenna is not required for this inventory.
 - **Nearby Wi-Fi** looks for the actual Ralink RT3070/RT2870 USB radio by
   its USB hardware ID, not by guessing \`wlan1\` or \`wlan2\`. It selects that
-  radio for an access-point survey, never silently falls back to internal Wi-Fi,
-  and refuses to change its mode if it carries your home-network uplink.
+  radio for an access-point survey by default; option 3 can override it with
+  another wireless interface. It never silently falls back and refuses to
+  change the mode of an actively connected Wi-Fi uplink.
 - The DSTIKE ESP8266 is a separate wireless radio reached through USB serial,
   not through the Ralink antenna.
 - This menu has **no deauthentication transmission controls**. Nearby Wi-Fi
@@ -50,6 +52,31 @@ console router in place.
 
 You can also skip the menu using one-word actions such as
 \`wifi devices\`, \`wifi wireless\`, or \`wifi adapters\`.
+
+## Choose which network interface AutoWIFI uses
+
+In the `wifi` menu, choose **3 — View / change LAN and Wi-Fi interfaces**.
+It displays detected interfaces, the system's current default route, and the
+two AutoWIFI selections. The submenu lets you:
+
+- **1 — LAN discovery:** choose `eth0`, `wlan0`, or any currently connected
+  interface with an eligible private IPv4 network. Option 1 uses this choice.
+- **2 — Nearby Wi-Fi survey:** choose an available wireless interface such as
+  `wlan0` or the Ralink `wlan2`. Option 2 uses this choice.
+- **3 — Reset both to AUTO** (also available as **0 — Automatic** when choosing
+  an individual interface).
+
+These preferences are stored locally at
+`~/.config/autowifi-kali-setup/interface-selection.json` (private 0600).
+They survive `git pull` and reinstalling the menu. You can also type
+`wifi adapters` to go straight to these settings.
+
+This changes **which interface AutoWIFI uses for each task**. It does not
+change Linux default routing or connect/disconnect from a network. Ethernet
+interfaces such as `eth0` can be used for **LAN host discovery**, not for an
+over-the-air Wi-Fi survey. An unavailable saved interface causes a clear
+error instead of silently using another one. Surveys refuse to take over a
+Wi-Fi interface that is currently connected to an access point.
 
 ## BOMB — editable saved home-network rehearsal
 
