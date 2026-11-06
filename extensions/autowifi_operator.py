@@ -501,6 +501,13 @@ def interpret(text: str) -> list[str] | None:
             any(word in lower for word in ("interface", "adapter", "radio", "antenna"))):
         return [_bin("autowifi-menu"), "adapters"]
 
+    if (any(term in lower for term in ("diagnose", "diagnostic", "troubleshoot", "why only one")) and
+            any(term in lower for term in ("wifi", "wi-fi", "network", "adapter", "antenna"))):
+        return [_bin("autowifi-menu"), "doctor"]
+    if (any(term in lower for term in ("recent", "saved", "last", "history")) and
+            any(term in lower for term in ("scan", "survey", "results", "report"))):
+        return [_bin("autowifi-menu"), "history"]
+
     if "bomb" in lower:
         if any(word in lower for word in ("edit", "manage", "change", "rename", "add", "remove", "delete", "settings")):
             return [_bin("autowifi-menu"), "networks"]
