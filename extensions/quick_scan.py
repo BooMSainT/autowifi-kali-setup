@@ -137,6 +137,8 @@ def _configure_radios(args) -> None:
 
 
 def _scan_wireless(args, include_clients: bool) -> None:
+    if args.channels and not re.fullmatch(r"(?:[1-9]|1[01])(?:,(?:[1-9]|1[01]))*", args.channels):
+        raise ValueError("Use comma-separated channels 1-11, e.g., 1,6,11")
     selected = _select_wireless_interface(args.interface)
     monitor_interface = selected.name
     enabled_here = selected.mode.lower() != "monitor"
@@ -148,7 +150,8 @@ def _scan_wireless(args, include_clients: bool) -> None:
 
     try:
         scanner = NetworkScanner(monitor_interface)
-        networks = scanner.scan(duration=args.duration)
+        network_channels = args.channels or None
+        networks = scanner.scan(duration=args.duration, channel=network_channels)
         networks = [
             network
             for network in networks
@@ -159,6 +162,8 @@ def _scan_wireless(args, include_clients: bool) -> None:
         print(f"Interface: {monitor_interface}")
         print(f"Scan duration: {args.duration} seconds")
         print(f"Target filter: {args.target or 'all observed access points'}")
+        print(f"Channels: {args.channels or 'automatic band hopping'}")
+        print(f"Access points detected: {len(networks)}")
         print()
         print("ACCESS POINTS — strongest observed power first")
         print("POWER\tBSSID\tCHANNEL\tENCRYPTION\tSSID")
@@ -169,6 +174,9 @@ def _scan_wireless(args, include_clients: bool) -> None:
             )
         if not networks:
             print("No matching access points were observed.")
+        elif len(networks) == 1:
+            print("Only one AP was observed. This is not proof that other networks are absent.")
+            print("Check the selected radio, 2.4/5 GHz compatibility, and scan duration.")
 
         if include_clients:
             clients = []
@@ -367,6 +375,8 @@ def build_parser() -> argparse.ArgumentParser:
         child.add_argument("--target", default="")
         child.add_argument("--interface", default="")
         child.add_argument("--duration", type=int, default=duration, choices=range(10, 301))
+        child.add_argument("--channels", default="",
+                           help="Optional comma-separated Wi-Fi channel list (1-11 for 2.4 GHz)")
 
     subparsers.add_parser("interfaces", help="List wireless and LAN interfaces")
     subparsers.add_parser("check", help="Check AutoWIFI dependencies")
