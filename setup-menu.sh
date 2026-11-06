@@ -9,12 +9,13 @@ if [[ "$(id -u)" -eq 0 ]]; then
   echo "Run this as your normal Kali user, not root." >&2
   exit 2
 fi
-if [[ ! -f "$SCRIPT_DIR/extensions/simple_menu.py" || ! -f "$SCRIPT_DIR/extensions/bomb_simulation.py" ]]; then
+if [[ ! -f "$SCRIPT_DIR/extensions/simple_menu.py" || ! -f "$SCRIPT_DIR/extensions/bomb_simulation.py" || ! -f "$SCRIPT_DIR/extensions/network_inventory.py" ]]; then
   echo "Menu file missing. Run git pull from ~/autowifi-kali-setup." >&2
   exit 2
 fi
 mkdir -p "$CONFIG_DIR" "$BIN_DIR"
 install -m 0644 "$SCRIPT_DIR/extensions/simple_menu.py" "$CONFIG_DIR/simple_menu.py"
+install -m 0644 "$SCRIPT_DIR/extensions/network_inventory.py" "$CONFIG_DIR/network_inventory.py"
 # Refresh the direct survey runner too; setup-ai.sh is not needed for this fix.
 install -m 0644 "$SCRIPT_DIR/extensions/quick_scan.py" "$CONFIG_DIR/quick_scan.py"
 install -m 0644 "$SCRIPT_DIR/extensions/bomb_simulation.py" "$CONFIG_DIR/bomb_simulation.py"
@@ -28,6 +29,12 @@ set -euo pipefail
 exec /usr/bin/python3 "$HOME/.config/autowifi-kali-setup/simple_menu.py" "$@"
 SH
 chmod 0755 "$BIN_DIR/autowifi-menu"
+cat > "$BIN_DIR/autowifi-inventory" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+exec /usr/bin/python3 "$HOME/.config/autowifi-kali-setup/network_inventory.py" "$@"
+SH
+chmod 0755 "$BIN_DIR/autowifi-inventory"
 cat > "$BIN_DIR/autowifi-bomb" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -52,4 +59,5 @@ echo "Run the offline BOMB rehearsal: $BIN_DIR/wifi bomb"
 echo "Check your radios and drivers: $BIN_DIR/wifi doctor"
 echo "Review your last scans: $BIN_DIR/wifi reports"
 echo "Run a Wi-Fi scan: $BIN_DIR/wifi scan"
+echo "Advanced monitor-mode survey: $BIN_DIR/wifi monitor-scan"
 echo "Saved network names are local and survive git pull or reinstall."
