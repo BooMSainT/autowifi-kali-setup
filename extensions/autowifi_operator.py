@@ -497,6 +497,10 @@ def interpret(text: str) -> list[str] | None:
     if code in {"menu", "wifi"} or lower in {"show menu", "open menu", "main menu"}:
         return [_bin("autowifi-menu")]
 
+    if (any(word in lower for word in ("change", "switch", "select", "choose", "configure", "set")) and
+            any(word in lower for word in ("interface", "adapter", "radio", "antenna"))):
+        return [_bin("autowifi-menu"), "adapters"]
+
     if "bomb" in lower:
         if any(word in lower for word in ("edit", "manage", "change", "rename", "add", "remove", "delete", "settings")):
             return [_bin("autowifi-menu"), "networks"]
