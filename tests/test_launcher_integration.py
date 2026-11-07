@@ -27,7 +27,7 @@ class LauncherIntegrationTests(unittest.TestCase):
         self.checkout = self.home / "autowifi-kali-setup"
         (self.checkout / "extensions").mkdir(parents=True)
         for name in ("simple_menu.py", "network_inventory.py",
-                     "bomb_simulation.py", "quick_scan.py",
+                     "lan_inventory.py", "bomb_simulation.py", "quick_scan.py",
                      "autowifi_operator.py"):
             shutil.copy2(SOURCE / "extensions" / name, self.checkout / "extensions" / name)
         shutil.copy2(SOURCE / "setup-menu.sh", self.checkout / "setup-menu.sh")
@@ -103,6 +103,42 @@ class LauncherIntegrationTests(unittest.TestCase):
         self.assertIn("Access points detected: 2", result.stdout)
         self.assertIn("Home", result.stdout)
         self.assertIn("Guest", result.stdout)
+
+    def test_installed_lan_inventory_on_mock_home_network(self):
+        self.install()
+        fakebin = self.home / "fake-lan-bin"
+        fakebin.mkdir()
+        ip = fakebin / "ip"
+        ip.write_text(
+            "#!/bin/sh\n"
+            "case \"$*\" in\n"
+            "  *addr*) printf '%s\\n' '[{\"ifname\":\"eth0\",\"operstate\":\"UP\",\"addr_info\":[{\"family\":\"inet\",\"scope\":\"global\",\"local\":\"192.168.7.3\",\"prefixlen\":24}]}]' ;;\n"
+            "  *route*) printf '%s\\n' '[{\"dev\":\"eth0\"}]' ;;\n"
+            "  *neigh*) printf '%s\\n' '[]' ;;\n"
+            "esac\n"
+        )
+        ip.chmod(0o755)
+        nmap = fakebin / "nmap"
+        nmap.write_text(
+            "#!/bin/sh\n"
+            "printf '%s\\n' '<nmaprun>' "
+            "'<host><status state=\"up\"/><address addr=\"192.168.7.1\" addrtype=\"ipv4\"/><hostnames><hostname name=\"my-router.local\"/></hostnames></host>' "
+            "'<host><status state=\"up\"/><address addr=\"192.168.7.55\" addrtype=\"ipv4\"/><hostnames><hostname name=\"laserjet-office.local\"/></hostnames></host>' "
+            "'</nmaprun>'\n"
+        )
+        nmap.chmod(0o755)
+        self.env["PATH"] = str(fakebin) + os.pathsep + self.env.get("PATH", "")
+        report = self.run_cmd(str(self.bin / "wifi"), "devices", input_text="2\nl\n0\n")
+        self.assertEqual(report.returncode, 0, report.stdout + report.stderr)
+        self.assertIn("Devices: 2", report.stdout)
+        self.assertIn("SELECTED DEVICE", report.stdout)
+        self.assertIn("possible printer", report.stdout)
+        self.assertIn("my-router.local", report.stdout)
+        reports = list((self.home / ".local/share/autowifi/menu-reports").glob("*.json"))
+        self.assertEqual(len(reports), 1)
+        data = json.loads(reports[0].read_text())
+        self.assertEqual(data["count"], 2)
+        self.assertEqual(data["kind"], "lan")
 
     def test_bomb_home_ssid_editor_and_simulation_survive_install(self):
         self.install()

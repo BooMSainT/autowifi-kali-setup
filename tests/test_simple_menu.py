@@ -89,9 +89,9 @@ phy#0
 
     def test_home_device_audit_uses_lan_scanner(self):
         with patch.object(menu, "default_route", return_value="eth0"), \
-             patch.object(menu, "_run_recorded", return_value=0) as run:
+             patch.object(menu, "_run_program", return_value=0) as run:
             self.assertEqual(menu.connected_devices(), 0)
-            run.assert_called_once_with("autowifi-devices", kind="lan", interface="eth0")
+            run.assert_called_once_with("autowifi-lan")
 
     def test_saved_interfaces_persist_locally_and_permissions_are_private(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -133,16 +133,15 @@ phy#0
         with patch.object(menu, "load_settings", return_value={"lan": "eth0", "wireless": ""}), \
              patch.object(menu, "lan_interfaces", return_value=[
                  {"name": "eth0", "subnet": "192.168.1.0/24"}
-             ]), patch.object(menu, "_run_recorded", return_value=0) as run:
+             ]), patch.object(menu, "_run_program", return_value=0) as run:
             self.assertEqual(menu.connected_devices(), 0)
-            run.assert_called_once_with("autowifi-devices", "--interface", "eth0",
-                                        kind="lan", interface="eth0")
+            run.assert_called_once_with("autowifi-lan", "--interface", "eth0")
 
     def test_missing_selected_lan_does_not_fallback(self):
         with patch.object(menu, "load_settings", return_value={"lan": "eth0", "wireless": ""}), \
              patch.object(menu, "lan_interfaces", return_value=[
                  {"name": "wlan0", "subnet": "192.168.1.0/24"}
-             ]), patch.object(menu, "_run_recorded") as run:
+             ]), patch.object(menu, "_run_program") as run:
             self.assertEqual(menu.connected_devices(), 1)
             run.assert_not_called()
 
