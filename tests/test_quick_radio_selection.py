@@ -23,6 +23,7 @@ def _load_runner():
         mod = types.ModuleType(f"autowifi.{suffix}")
         mods[f"autowifi.{suffix}"] = mod
         setattr(pkg, suffix, mod)
+    mods["autowifi.interface"].list_interfaces = Mock()
     mods["autowifi.cracker"].find_wordlists = Mock()
     mods["autowifi.handshake"].HandshakeCapture = Mock()
     mods["autowifi.handshake"].verify_handshake = Mock()
