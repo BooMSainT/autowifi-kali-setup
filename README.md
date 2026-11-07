@@ -4,6 +4,48 @@ Installs a local `~/AutoWIFI` checkout with pipx and adds an optional local AI o
 
 Use AutoWIFI only on networks you own or have explicit permission to test.
 
+
+## AUTOPILOT — one command, minimal input
+
+`wifi auto` runs a **safe, evidence-based health check and inventory** from
+the configured hardware without asking which menus to open. It:
+
+1. Detects the saved Wi-Fi adapter, or **exactly one real Ralink RT3070/RT2870**
+   USB adapter by hardware ID. It does **not** silently switch to the internal
+   Wi-Fi card if your high-gain USB radio is missing.
+2. Checks whether NetworkManager can use the selected adapter in managed mode.
+   It runs one normal `nmcli` access-point scan, retries **once** only if
+   it returns an empty, successful observation, shows factual SSID/channel/
+   signal/security results, and records the scan privately. It never
+   deauthenticates clients or changes radio mode.
+3. Checks the directly connected private IPv4 LAN for responsive devices
+   with Nmap when installed, and stores the aligned inventory privately.
+4. Reads firmware status from the separate DSTIKE USB serial device **only
+   when a specific or unambiguous port is available**; otherwise explains
+   the missing dependency, ambiguous port or permission problem.
+5. Summarizes what worked, what failed, and which short command to use next,
+   with a timestamped private JSON report.
+
+The **interactive menu remains available** by typing `wifi`, and now also
+has **option 12 AUTOPILOT**. To run it without answering prompts:
+
+```bash
+cd ~/autowifi-kali-setup && git pull --ff-only && bash setup-menu.sh && ~/.local/bin/wifi auto
+```
+
+After this one-time launcher installation, run only `wifi auto`. It
+reuses your saved adapter configuration and home-network names, but does
+not automatically mark neighboring SSIDs as yours. It doesn't use AI to
+invent devices, network identities, or success claims. LAN inventory is
+limited to the connected private network; firmware, power, driver,
+rfkill, and NetworkManager problems are reported rather than repaired by
+silently changing system settings.
+
+**Important limitation:** no GitHub test can confirm that the ASUS,
+DSTIKE, or antenna are working physically. Integration tests use
+simulated Linux wireless/USB responses. On Kali, `wifi doctor`
+provides hardware-specific evidence if an automatic scan fails.
+
 ## Use the high-gain Ralink USB unit for Kali Wi-Fi discovery
 
 ### Legacy scanner selection is now consistent

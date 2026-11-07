@@ -8,6 +8,7 @@ on:
       - "extensions/deauther_console.py"
       - "extensions/autowifi_operator.py"
       - "extensions/simple_menu.py"
+      - "extensions/autopilot.py"
       - "extensions/lan_inventory.py"
       - "extensions/network_inventory.py"
       - "extensions/quick_scan.py"
@@ -25,6 +26,7 @@ on:
       - "extensions/deauther_console.py"
       - "extensions/autowifi_operator.py"
       - "extensions/simple_menu.py"
+      - "extensions/autopilot.py"
       - "extensions/lan_inventory.py"
       - "extensions/network_inventory.py"
       - "extensions/quick_scan.py"
@@ -46,7 +48,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Syntax check
         run: |
-          python3 -m py_compile extensions/hardware_bridge.py extensions/deauther_bridge.py extensions/deauther_console.py extensions/autowifi_operator.py extensions/simple_menu.py extensions/lan_inventory.py extensions/quick_scan.py extensions/bomb_simulation.py
+          python3 -m py_compile extensions/hardware_bridge.py extensions/deauther_bridge.py extensions/deauther_console.py extensions/autowifi_operator.py extensions/simple_menu.py extensions/autopilot.py extensions/lan_inventory.py extensions/quick_scan.py extensions/bomb_simulation.py
           bash -n setup-ai.sh setup-hardware.sh setup-deauther.sh setup-menu.sh
       - name: Unit tests
         run: python3 -m unittest discover -s tests -v

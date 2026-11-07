@@ -30,7 +30,7 @@ esac
 [[ "$branch" == "main" ]] ||
   die "Currently on Git branch '$branch', not 'main'. Run: git switch main && git pull --ff-only"
 
-for file in simple_menu.py network_inventory.py lan_inventory.py deauther_bridge.py deauther_console.py bomb_simulation.py quick_scan.py autowifi_operator.py; do
+for file in simple_menu.py network_inventory.py lan_inventory.py deauther_bridge.py deauther_console.py autopilot.py bomb_simulation.py quick_scan.py autowifi_operator.py; do
   [[ -r "$SCRIPT_DIR/extensions/$file" ]] || die "Missing extensions/$file"
 done
 command -v python3 >/dev/null || die "Python 3 is missing."
@@ -44,7 +44,7 @@ import sys
 
 root = Path(sys.argv[1]) / "extensions"
 for name in ("simple_menu.py", "network_inventory.py", "lan_inventory.py",
-             "deauther_bridge.py", "deauther_console.py", "bomb_simulation.py",
+             "deauther_bridge.py", "deauther_console.py", "autopilot.py", "bomb_simulation.py",
              "quick_scan.py", "autowifi_operator.py"):
     path = root / name
     ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
@@ -76,6 +76,7 @@ write_live_launcher autowifi-inventory network_inventory.py
 write_live_launcher autowifi-lan lan_inventory.py
 write_live_launcher autowifi-deauther deauther_bridge.py
 write_live_launcher autowifi-deauther-menu deauther_console.py
+write_live_launcher autowifi-autopilot autopilot.py
 write_live_launcher autowifi-bomb bomb_simulation.py
 
 cat > "$BIN_DIR/wifi" <<'SH'
@@ -92,8 +93,9 @@ echo "Checking installed launchers (no hardware or Wi-Fi activity):"
 "$BIN_DIR/autowifi-lan" --help >/dev/null
 "$BIN_DIR/autowifi-deauther" --help >/dev/null
 "$BIN_DIR/autowifi-deauther-menu" --help >/dev/null
+"$BIN_DIR/autowifi-autopilot" --help >/dev/null
 "$BIN_DIR/autowifi-bomb" --help >/dev/null
-echo "  Menu, Wi-Fi, LAN, DSTIKE and BOMB launchers: PASS"
+echo "  Menu, Wi-Fi, LAN, DSTIKE, autopilot and BOMB launchers: PASS"
 revision="$(git -C "$SCRIPT_DIR" rev-parse --short HEAD 2>/dev/null || true)"
 echo
 echo "Repository: $EXPECTED_REPO"
@@ -104,6 +106,7 @@ echo "Future updates: git pull --ff-only (then run wifi)"
 echo
 echo "Launch: $BIN_DIR/wifi"
 echo "Network scan: $BIN_DIR/wifi scan"
+echo "Automatic diagnostics + scan: $BIN_DIR/wifi auto"
 echo "Pin Kali Wi-Fi discovery to the USB Ralink radio: $BIN_DIR/wifi ralink"
 echo "Adapter checks: $BIN_DIR/wifi doctor"
 echo "Detailed home devices: $BIN_DIR/wifi devices"
