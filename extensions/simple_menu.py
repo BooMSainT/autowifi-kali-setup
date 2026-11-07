@@ -603,10 +603,11 @@ def _run_program(name: str, *args: str) -> int:
 
 
 def connected_devices() -> int:
+    """Aligned device table and interactive selected-host inspection."""
     settings = load_settings()
     route = default_route()
     selected = settings["lan"]
-    print("\n=== Devices connected to your selected private LAN ===")
+    print("\n=== LAN DEVICE INVENTORY ===")
     if selected:
         valid = {item["name"] for item in lan_interfaces()}
         if selected not in valid:
@@ -615,11 +616,10 @@ def connected_devices() -> int:
             print("Not silently switching to another adapter.")
             return 1
         print(f"Using saved LAN interface: {selected}")
-        return _run_recorded("autowifi-devices", "--interface", selected,
-                         kind="lan", interface=selected)
-    print(f"Using AUTO private-LAN selection (system route: {route or 'not found'}).")
-    print("The connected-device audit does not use a passive external antenna.")
-    return _run_recorded("autowifi-devices", kind="lan", interface=route or "AUTO")
+        return _run_program("autowifi-lan", "--interface", selected)
+    print(f"Using automatic LAN interface (system route: {route or 'not found'}).")
+    print("The scanner will identify responsive devices and offer numbered details.")
+    return _run_program("autowifi-lan")
 
 
 def choose_survey_radio() -> str | None:
