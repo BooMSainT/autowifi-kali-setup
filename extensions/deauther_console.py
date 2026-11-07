@@ -209,7 +209,7 @@ def show_logs() -> int:
 
 
 def show_ralink() -> int:
-    """View independent Wi-Fi radio info; never try to attach it to the ESP8266."""
+    """The ESP8266 cannot use the Ralink USB adapter as its antenna."""
     from simple_menu import adapters, load_settings, default_route, radio_bands
     radios = adapters()
     wifi_preference = load_settings()["wireless"]
