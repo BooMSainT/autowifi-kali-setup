@@ -28,7 +28,7 @@ RALINK_USB_IDS = {("148f", "3070"), ("148f", "2870")}
 BIN_DIR = Path.home() / ".local" / "bin"
 REPORT_DIR = Path.home() / ".local/share/autowifi/menu-reports"
 MAX_REPORT_OUTPUT = 512_000
-MENU_VERSION = "2026.11.06.2"
+MENU_VERSION = "2026.11.06.3"
 CONFIG_PATH = Path.home() / ".config/autowifi-kali-setup/interface-selection.json"
 INTERFACE_NAME = re.compile(r"^[a-zA-Z0-9_.:-]{1,32}$")
 
@@ -538,7 +538,8 @@ def doctor() -> int:
     dependencies = ["ip", "iw", "nmcli", "rfkill", "nmap", "airmon-ng", "airodump-ng"]
     for dependency in dependencies:
         print(f"  {dependency}: {'installed' if shutil.which(dependency) else 'MISSING'}")
-    for wrapper in ("autowifi-direct", "autowifi-devices", "autowifi-deauther"):
+    for wrapper in ("autowifi-direct", "autowifi-devices", "autowifi-deauther",
+                    "autowifi-deauther-menu"):
         available = (BIN_DIR / wrapper).is_file() or shutil.which(wrapper)
         print(f"  {wrapper}: {'installed' if available else 'MISSING'}")
     if shutil.which("nmcli"):
@@ -838,8 +839,12 @@ ACTIONS = {
     "devices": connected_devices,
     "wireless": nearby_wifi,
     "adapters": adapter_settings,
-    "deauther": lambda: _run_program("autowifi-deauther", "status"),
-    "cached": lambda: _run_program("autowifi-deauther", "cached-aps"),
+    "deauther": lambda: _run_program("autowifi-deauther-menu"),
+    "cached": lambda: _run_program("autowifi-deauther-menu", "cached"),
+    "deauther-status": lambda: _run_program("autowifi-deauther-menu", "status"),
+    "deauther-detect": lambda: _run_program("autowifi-deauther-menu", "detect"),
+    "deauther-logs": lambda: _run_program("autowifi-deauther-menu", "logs"),
+    "deauther-port": lambda: _run_program("autowifi-deauther-menu", "select"),
     "ai": lambda: _run_program("autowifi-ai"),
     "bomb": lambda: _run_program("autowifi-bomb", "run"),
     "networks": lambda: _run_program("autowifi-bomb", "manage"),
@@ -856,8 +861,8 @@ OPTIONS = [
     ("1", "Find devices connected to my home network", "devices"),
     ("2", "Scan nearby Wi-Fi using selected wireless radio", "wireless"),
     ("3", "View / change LAN and Wi-Fi interfaces (eth0, wlan0...)", "adapters"),
-    ("4", "Check DSTIKE ESP8266 USB connection", "deauther"),
-    ("5", "Show saved DSTIKE Wi-Fi observations", "cached"),
+    ("4", "DSTIKE USB / Ralink hardware control hub", "deauther"),
+    ("5", "Show cached DSTIKE Wi-Fi observations", "cached"),
     ("6", "Open AutoWIFI AI chat", "ai"),
     ("7", "BOMB: simulate incidents for saved home networks", "bomb"),
     ("8", "Edit BOMB networks (add / rename / delete SSIDs)", "networks"),
