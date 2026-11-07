@@ -115,7 +115,8 @@ class DeviceInventoryTests(unittest.TestCase):
         with patch.object(lan, "_scope", return_value=scope), \
              patch.object(lan, "_run", return_value=nmap) as scan, \
              patch.object(lan, "_neighbors", return_value=cache), \
-             patch.object(lan, "_oui_vendors", return_value={}):
+             patch.object(lan, "_oui_vendors", return_value={}), \
+             patch.object(lan.shutil, "which", return_value="/usr/bin/nmap"):
             output = lan.discover()
         self.assertEqual(output["device_count"], 2)
         self.assertEqual(output["devices"][1]["mac"], "DE:AD:BE:EF:01:02")
