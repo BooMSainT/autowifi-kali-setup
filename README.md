@@ -4,6 +4,49 @@ Installs a local `~/AutoWIFI` checkout with pipx and adds an optional local AI o
 
 Use AutoWIFI only on networks you own or have explicit permission to test.
 
+## Detailed LAN device discovery with properly aligned information
+
+**Menu option 1**, `wifi devices`, and `wifi audit` now use a dedicated,
+read-only **LAN device inventory** (not the Wi-Fi access-point scan).
+
+The device list fits the terminal width: on wider screens it uses fixed,
+aligned columns (number, IP, hostname, type clue and MAC); on narrow
+screens it uses compact two-line cards. Long names are truncated in the
+summary and **always shown in full in device details**.
+
+Choose a numbered device to see:
+
+- Full **IP address, hostname and hostname source** (reverse DNS, if the
+  router/network exposes it).
+- **MAC address**, whether it came from Nmap's ARP observation or the
+  Linux neighbor cache (cache entries may be stale).
+- **MAC vendor/OUI** where Nmap or its locally installed OUI database
+  recognizes it. This identifies a network interface vendor, **not
+  necessarily the brand of the whole device**.
+- **Possible device type** and the reason for that clue. This is
+  hostname-based evidence, not a claim to know the device model or OS.
+- **P** checks a small list of common TCP ports on **that one selected
+  private-LAN device**, and reports any open ports/service names.
+  This is optional and does not guess passwords or exploit services.
+
+On the device list, **R** rescans, **E** offers an enhanced Nmap/ARP
+discovery (which asks for sudo in the terminal), and **0** returns.
+The normal scan runs without requiring sudo, but some device MAC
+addresses may not be available. Enhanced ARP discovery tends to find
+more LAN addresses where ordinary Nmap probes are blocked, without
+guaranteeing completeness.
+
+Device reports are stored privately under
+`~/.local/share/autowifi/menu-reports/` and are also available from
+`wifi reports`. Scan scope is restricted to an existing, directly connected
+private IPv4 subnet with at most 4,096 addresses. Only responsive hosts
+are listed as online. Router client isolation, sleeping devices and
+disabled reverse DNS can limit identification.
+
+As with the normal Wi-Fi menu, these scripts run directly from your
+GitHub checkout. Once updated, no additional installer is needed for
+future source changes.
+
 ## Critical update fix: `git pull` now updates the running menu
 
 Previous versions of `setup-menu.sh` copied `simple_menu.py`,
