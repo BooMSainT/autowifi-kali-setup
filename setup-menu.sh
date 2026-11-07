@@ -104,6 +104,7 @@ echo "Future updates: git pull --ff-only (then run wifi)"
 echo
 echo "Launch: $BIN_DIR/wifi"
 echo "Network scan: $BIN_DIR/wifi scan"
+echo "Pin Kali Wi-Fi discovery to the USB Ralink radio: $BIN_DIR/wifi ralink"
 echo "Adapter checks: $BIN_DIR/wifi doctor"
 echo "Detailed home devices: $BIN_DIR/wifi devices"
 echo "DSTIKE / Ralink hub: $BIN_DIR/wifi deauther"
