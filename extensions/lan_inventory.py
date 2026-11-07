@@ -26,6 +26,11 @@ import xml.etree.ElementTree as ET
 REPORT_DIR = Path.home() / ".local/share/autowifi/menu-reports"
 OUI_DATABASE = Path("/usr/share/nmap/nmap-mac-prefixes")
 MAC_RE = re.compile(r"^(?:[0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}$")
+
+
+def _clean(value: str) -> str:
+    """Do not allow device-controlled names to print terminal control codes."""
+    return re.sub(r"[\x00-\x1f\x7f-\x9f]", " ", str(value or ""))
 # Only a small, visible set of ports, and only after user requests it.
 COMMON_PORTS = "22,53,80,139,443,445,554,631,1883,3389,8000,8080,8443,9100"
 
@@ -107,8 +112,9 @@ def _parse_hosts(xml_text: str) -> list[dict]:
             if address.get("addrtype") == "ipv4":
                 ipv4 = address.get("addr", "")
             if address.get("addrtype") == "mac":
-                mac = address.get("addr", "")
-                vendor = address.get("vendor", "")
+                raw_mac = address.get("addr", "")
+                mac = raw_mac if MAC_RE.fullmatch(raw_mac) else ""
+                vendor = _clean(address.get("vendor", "")) if mac else ""
         try:
             ipaddress.IPv4Address(ipv4)
         except ValueError:
@@ -116,7 +122,7 @@ def _parse_hosts(xml_text: str) -> list[dict]:
         hostname = ""
         for entry in host.findall("hostnames/hostname"):
             if entry.get("name"):
-                hostname = entry.get("name", "")
+                hostname = _clean(entry.get("name", ""))
                 break
         result.append({
             "ip": ipv4, "mac": mac.upper(), "vendor": vendor,
@@ -234,7 +240,7 @@ def discover(interface: str = "", timeout: int = 120, elevated: bool = False) ->
 
 
 def _short(text: str, width: int) -> str:
-    value = str(text or "?").replace("\n", " ").replace("\r", " ").replace("\t", " ")
+    value = _clean(str(text or "?"))
     return value if len(value) <= width else value[:max(1, width - 1)] + "…"
 
 
@@ -247,7 +253,7 @@ def print_inventory(report: dict, columns: int | None = None) -> None:
     print("Type and manufacturer are clues, not verified identities.\n")
     records = report["devices"]
     width = columns if columns is not None else shutil.get_terminal_size((90, 25)).columns
-    if width >= 76:
+    if width >= 79:
         widths = (3, 15, 21, 15, 17)
         header = ("#", "IP", "HOSTNAME", "DEVICE CLUE", "MAC")
         def line(values):
@@ -364,7 +370,7 @@ def interactive(report: dict, scanner=discover, port_checker=inspect_services) -
             ("LAN interface", report["interface"]),
         )
         for key, value in details:
-            print(f"  {key:<19}: {value}", flush=True)
+            print(f"  {key:<19}: {_clean(value)}", flush=True)
         while True:
             print("\nP. Check common TCP services on THIS device only")
             print("L. Return to device list   0. Back", flush=True)
