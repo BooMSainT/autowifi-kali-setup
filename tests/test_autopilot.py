@@ -17,7 +17,6 @@ sys.path.insert(0, str(EXT))
 spec = importlib.util.spec_from_file_location("autowifi_autopilot_tests", EXT / "autopilot.py")
 auto = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(auto)
-sys.path.remove(str(EXT))
 
 
 class AutopilotTests(unittest.TestCase):
