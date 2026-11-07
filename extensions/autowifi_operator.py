@@ -508,6 +508,11 @@ def interpret(text: str) -> list[str] | None:
             any(term in lower for term in ("scan", "survey", "results", "report"))):
         return [_bin("autowifi-menu"), "history"]
 
+    # Plain read-only Wi-Fi discovery must use the saved Ralink hardware
+    # selection, not the quick scanner's first airmon-ng interface.
+    if code in {"networks", "nearby"} and not rest:
+        return [_bin("autowifi-menu"), "scan"]
+
     if "bomb" in lower:
         if any(word in lower for word in ("edit", "manage", "change", "rename", "add", "remove", "delete", "settings")):
             return [_bin("autowifi-menu"), "networks"]

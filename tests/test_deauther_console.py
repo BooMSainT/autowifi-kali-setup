@@ -108,6 +108,24 @@ class HubTests(unittest.TestCase):
             choose.assert_called_once()
             scan.assert_not_called()
 
+    def test_ralink_hub_scan_requires_confirmed_usb_radio_selection(self):
+        import types
+        fake_menu = types.SimpleNamespace(prefer_ralink_for_scans=lambda: 1)
+        with patch.dict(sys.modules, {"simple_menu": fake_menu}), \
+             patch.object(hub.subprocess, "run") as run:
+            self.assertEqual(hub.scan_ralink(), 1)
+            run.assert_not_called()
+
+    def test_ralink_hub_scan_uses_selected_kali_menu_not_dstike(self):
+        import types
+        fake_menu = types.SimpleNamespace(prefer_ralink_for_scans=lambda: 0)
+        with patch.dict(sys.modules, {"simple_menu": fake_menu}), \
+             patch.object(hub.subprocess, "run", return_value=type(
+                 "Result", (), {"returncode": 0})()) as run:
+            self.assertEqual(hub.scan_ralink(), 0)
+        self.assertEqual(run.call_args.args[0][-1], "scan")
+        self.assertNotIn("deauth", " ".join(run.call_args.args[0]))
+
     def test_menu_routes_only_safe_actions(self):
         with patch.object(hub, "load_port", return_value=""), \
              patch.object(hub, "run_read_only", return_value=0) as read, \

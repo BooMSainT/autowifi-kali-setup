@@ -230,7 +230,11 @@ def show_ralink() -> int:
 
 
 def scan_ralink() -> int:
-    """Open the existing safe network-discovery menu, not a DSTIKE RF command."""
+    """Use USB-ID-confirmed Ralink for the Kali scan; never the ESP8266."""
+    from simple_menu import prefer_ralink_for_scans
+    if prefer_ralink_for_scans() != 0:
+        print("No Ralink radio selected; refusing to scan with an unknown adapter.")
+        return 1
     launcher = Path.home() / ".local/bin/autowifi-menu"
     cmd = [str(launcher), "scan"] if launcher.is_file() else [
         sys.executable, str(Path(__file__).with_name("simple_menu.py")), "scan"
