@@ -10,6 +10,8 @@ from __future__ import annotations
 import argparse
 from datetime import datetime, timezone
 import ipaddress
+import contextlib
+import io
 import json
 import os
 from pathlib import Path
@@ -21,7 +23,7 @@ import tempfile
 import uuid
 import xml.etree.ElementTree as ET
 
-REPORT_DIR = Path.home() / ".local/share/autowifi/lan-inventory"
+REPORT_DIR = Path.home() / ".local/share/autowifi/menu-reports"
 OUI_DATABASE = Path("/usr/share/nmap/nmap-mac-prefixes")
 MAC_RE = re.compile(r"^(?:[0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}$")
 # Only a small, visible set of ports, and only after user requests it.
@@ -136,8 +138,9 @@ def _neighbors(interface: str) -> dict[str, str]:
     mapping = {}
     for item in entries:
         ip, mac = item.get("dst", ""), item.get("lladdr", "")
-        state = str(item.get("state", "")).upper()
-        if not MAC_RE.fullmatch(mac) or state in ("FAILED", "INCOMPLETE"):
+        original_state = item.get("state", "")
+        state = " ".join(original_state) if isinstance(original_state, list) else str(original_state)
+        if not MAC_RE.fullmatch(mac) or state.upper() in ("FAILED", "INCOMPLETE"):
             continue
         try:
             ipaddress.IPv4Address(ip)
@@ -267,8 +270,13 @@ def print_inventory(report: dict, columns: int | None = None) -> None:
 def _store(report: dict, directory: Path = REPORT_DIR) -> Path:
     directory.mkdir(parents=True, exist_ok=True, mode=0o700)
     directory.chmod(0o700)
-    filename = f"lan-{datetime.now(timezone.utc):%Y%m%dT%H%M%SZ}-{uuid.uuid4().hex[:8]}.json"
+    filename = f"{datetime.now(timezone.utc):%Y%m%dT%H%M%SZ}-{uuid.uuid4().hex[:8]}.json"
     path = directory / filename
+    rendered = io.StringIO()
+    with contextlib.redirect_stdout(rendered):
+        print_inventory(report, columns=90)
+    saved = {**report, "kind": "lan", "count": report["device_count"],
+             "exit_code": 0, "raw_output": rendered.getvalue()}
     with tempfile.NamedTemporaryFile(
         mode="w", encoding="utf-8", dir=directory,
         prefix=".lan-", delete=False
@@ -276,7 +284,7 @@ def _store(report: dict, directory: Path = REPORT_DIR) -> Path:
         tmp = Path(handle.name)
         os.fchmod(handle.fileno(), 0o600)
         try:
-            json.dump(report, handle, indent=2)
+            json.dump(saved, handle, indent=2)
             handle.write("\n")
             handle.flush()
             os.fsync(handle.fileno())
