@@ -145,7 +145,7 @@ class LauncherIntegrationTests(unittest.TestCase):
         self.install()
         version = self.run_cmd(str(self.bin / "autowifi-deauther-menu"), "--version")
         self.assertEqual(version.returncode, 0, version.stdout + version.stderr)
-        self.assertIn("2026.11.07.1", version.stdout)
+        self.assertIn("2026.11.06.3", version.stdout)
         self.assertIn(str(self.checkout / "extensions/deauther_console.py"), version.stdout)
         # No device attached, but port AUTO must be usable with no sudo.
         hub = self.run_cmd(str(self.bin / "wifi"), "deauther",
