@@ -4,6 +4,64 @@ Installs a local `~/AutoWIFI` checkout with pipx and adds an optional local AI o
 
 Use AutoWIFI only on networks you own or have explicit permission to test.
 
+## DSTIKE + Ralink Hardware Hub (menu option 4)
+
+The DSTIKE **ESP8266 Deauther** and Kali's **Ralink RT3070 USB Wi-Fi
+adapter** are distinct physical Wi-Fi radios. The DSTIKE uses USB serial
+(usually `/dev/ttyUSB0`) for firmware status and diagnostics. The Ralink
+adapter may have a larger external antenna and can be selected in the
+**Kali nearby Wi-Fi scanner**, but **the DSTIKE firmware cannot use that
+separate USB adapter as an antenna**.
+
+Select **4. DSTIKE USB / Ralink hardware control hub** in `wifi` or
+run `wifi deauther` directly:
+
+```text
+DSTIKE ESP8266 / RALINK — HARDWARE HUB
+1. Detect connected USB serial devices
+2. Choose DSTIKE USB port (saved)
+3. Read DSTIKE firmware and system status
+4. Show cached DSTIKE access points
+5. Listen to USB serial for 30 seconds (read-only)
+6. Listen and SAVE serial log (30 seconds)
+7. View saved DSTIKE serial logs
+8. Show Ralink USB adapter / antenna status
+9. Scan nearby Wi-Fi using separate Ralink adapter
+10. USB permissions and connection troubleshooting
+0. Back to AutoWIFI menu
+```
+
+**Versioned live-source installation:** from the correct setup repository,
+run `git pull --ff-only && bash setup-menu.sh` to install the
+new `autowifi-deauther` and `autowifi-deauther-menu` launchers. Future
+pulls update the source code directly. The new serial-port preference is
+stored privately in `~/.config/autowifi-kali-setup/dstike-port.json`
+and survives updates. If available, the menu prefers a stable
+`/dev/serial/by-id/...` symlink over a changing `/dev/ttyUSB0` name.
+
+Firmware status and cached-AP reads need `python3-serial`. The dedicated
+setup command, `bash setup-deauther.sh`, installs this dependency with
+APT and calls the shared live-source menu installer (it no longer
+overwrites the launcher with copied Python files). USB-port detection
+can still show existing ttyUSB/ttyACM ports when the dependency is
+missing. If Linux reports permission denied, the diagnostic shows the
+recommended `dialout` group fix.
+
+Shortcuts: `wifi deauther` (hub), `wifi deauther-detect`,
+`wifi deauther-status`, `wifi deauther-port`,
+`wifi cached`, `wifi deauther-logs`. All Spacehuhn serial
+commands used by this hub are fixed to `info`, `sysinfo`, and
+`show aps` (plus read-only USB listening), with no arbitrary
+serial command field or network-disruption controls. Cached APs were
+collected earlier by the DSTIKE; viewing them does **not** trigger
+a new on-device Wi-Fi scan. The Ralink option opens Kali's separate
+managed-mode network discovery menu.
+
+The hub includes **offline tests** for saved port choices, firmware
+responses, read-only commands, logging, USB diagnostics, and the
+live installed launchers. It does not establish that your specific
+DSTIKE is physically connected; use option 3 to verify that locally.
+
 ## Detailed LAN device discovery with properly aligned information
 
 **Menu option 1**, `wifi devices`, and `wifi audit` now use a dedicated,

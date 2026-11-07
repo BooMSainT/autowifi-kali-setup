@@ -30,7 +30,15 @@ except ImportError:
 
 def available_ports() -> list[dict]:
     if list_ports is None:
-        return []
+        # Still show the existing USB tty device nodes even when pyserial
+        # is missing, so a user can diagnose the cable/driver first.
+        found = sorted((*Path("/dev").glob("ttyUSB[0-9]*"),
+                        *Path("/dev").glob("ttyACM[0-9]*")))
+        return [{
+            "port": str(node),
+            "description": "USB serial device (python3-serial not installed)",
+            "vid": None, "pid": None, "serial_number": None,
+        } for node in found if DEVICE_RE.fullmatch(str(node))]
     results = []
     for item in sorted(list_ports.comports(), key=lambda item: item.device):
         if not DEVICE_RE.fullmatch(item.device):
@@ -138,12 +146,14 @@ def snapshot(args: argparse.Namespace) -> dict:
     ports = available_ports()
     result = {"timestamp": datetime.now(timezone.utc).isoformat(),
               "mode": "read_only", "action": args.action, "ports": ports}
+    if args.action == "detect":
+        result["state"] = "ports_found" if ports else "no_ports"
+        if serial is None:
+            result["hint"] = "python3-serial is needed to read firmware; install python3-serial"
+        return result
     if serial is None:
         result.update({"state": "dependency_missing",
                        "error": "python3-serial is missing"})
-        return result
-    if args.action == "detect":
-        result["state"] = "ports_found" if ports else "no_ports"
         return result
     selected, error = choose_port(args.port, ports)
     if error:
