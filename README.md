@@ -6,6 +6,28 @@ Use AutoWIFI only on networks you own or have explicit permission to test.
 
 ## Use the high-gain Ralink USB unit for Kali Wi-Fi discovery
 
+### Legacy scanner selection is now consistent
+
+In addition to the `wifi` menu, the older direct scanner
+(`autowifi-direct networks` and `autowifi-direct nearby`) now reads the
+same saved wireless interface preference. If you choose AUTO RALINK, it
+identifies the USB adapter by vendor/product ID at each run rather than
+using whichever wireless interface appears first. An explicit
+`--interface` argument still overrides this preference.
+
+If there is no detectable Ralink USB radio, or more than one matching
+radio, the direct scanner reports an error instead of silently falling
+back to the laptop's built-in Wi-Fi.
+
+The legacy direct scanner uses an installed Python copy, so refresh that
+copy with `bash setup-menu.sh` once after updating. The ordinary
+`wifi` menu and DSTIKE hardware hub use live Git source files.
+
+The **DSTIKE ESP8266 always scans with its own built-in radio**. There
+is no software setting that electrically connects another integrated
+USB Wi-Fi unit's antenna to the ESP8266.
+
+
 Some high-gain USB Wi-Fi products have an **integrated antenna** rather than
 an antenna that can be unscrewed. The USB assembly contains its own Wi-Fi
 radio. Its advertised gain (for example around 19 dBi) is not proof of

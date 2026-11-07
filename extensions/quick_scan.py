@@ -7,6 +7,7 @@ depending on a language model to choose and invoke the correct MCP tool.
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import shutil
 import subprocess
@@ -24,6 +25,8 @@ from autowifi.scanner import NetworkScanner
 
 
 INTERFACE_PATTERN = re.compile(r"^[A-Za-z0-9_.:-]+$")
+RALINK_USB_IDS = {("148f", "3070"), ("148f", "2870")}
+RADIO_PREFERENCES = Path.home() / ".config/autowifi-kali-setup/interface-selection.json"
 
 
 def _power(value: int) -> str:
@@ -42,19 +45,71 @@ def _target_matches(target: str, essid: str, bssid: str) -> bool:
     return any(value in item or item in value for value in values for item in haystack if item)
 
 
+def _usb_identity(name: str, root: Path = Path("/sys/class/net")) -> tuple[str, str] | None:
+    """Read actual USB vendor/product; interface numbers are not reliable IDs."""
+    if not INTERFACE_PATTERN.fullmatch(name):
+        return None
+    try:
+        device = (root / name / "device").resolve(strict=True)
+        for ancestor in (device, *device.parents):
+            vendor, product = ancestor / "idVendor", ancestor / "idProduct"
+            if vendor.is_file() and product.is_file():
+                return vendor.read_text().strip().lower(), product.read_text().strip().lower()
+    except (OSError, RuntimeError):
+        pass
+    return None
+
+
+def _saved_wireless_interface(path: Path | None = None) -> str:
+    """Read the same saved radio preference as the interactive wifi menu."""
+    location = path or RADIO_PREFERENCES
+    if not location.exists():
+        return ""
+    try:
+        data = json.loads(location.read_text(encoding="utf-8"))
+    except (ValueError, OSError) as exc:
+        raise ValueError("Could not read saved Wi-Fi interface settings") from exc
+    if not isinstance(data, dict) or data.get("version") != 1:
+        raise ValueError("Unrecognized saved Wi-Fi interface settings")
+    name = data.get("wireless", "")
+    if not isinstance(name, str) or (name and not INTERFACE_PATTERN.fullmatch(name)):
+        raise ValueError("Saved Wi-Fi interface name is invalid")
+    return name
+
+
 def _select_wireless_interface(requested: str):
+    """Honor explicit selection, then saved preference, then USB-ID Ralink.
+
+    Never silently pick the first internal interface for an on-air scan.
+    This is a software interface choice; it cannot rewire the DSTIKE radio.
+    """
     interfaces = wifi_interface.list_interfaces()
     if not interfaces:
         raise RuntimeError("No wireless interface was found by airmon-ng")
-    if requested:
+    chosen = requested or _saved_wireless_interface()
+    if chosen:
         for item in interfaces:
-            if item.name == requested:
+            if item.name == chosen:
                 return item
         names = ", ".join(item.name for item in interfaces)
-        raise ValueError(f"Wireless interface {requested!r} was not found. Available: {names}")
-    monitor = [item for item in interfaces if item.mode.lower() == "monitor"]
-    managed = [item for item in interfaces if item.mode.lower() == "managed"]
-    return (monitor or managed or interfaces)[0]
+        raise ValueError(
+            f"Selected wireless interface {chosen!r} is unavailable; found: {names}. "
+            "Open wifi adapters to change your preference."
+        )
+    matches = [item for item in interfaces
+               if _usb_identity(item.name) in RALINK_USB_IDS]
+    if len(matches) == 1:
+        return matches[0]
+    if not matches:
+        raise RuntimeError(
+            "No usable Ralink RT3070/RT2870 USB Wi-Fi interface detected. "
+            "Check USB connection and driver using wifi doctor, or explicitly "
+            "select a wireless radio with wifi adapters."
+        )
+    raise RuntimeError(
+        "Multiple Ralink USB radios found; choose one with wifi adapters "
+        "or specify --interface explicitly."
+    )
 
 
 def _interface_by_name(name: str, allow_monitor_suffix: bool = False):
