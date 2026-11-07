@@ -30,7 +30,7 @@ esac
 [[ "$branch" == "main" ]] ||
   die "Currently on Git branch '$branch', not 'main'. Run: git switch main && git pull --ff-only"
 
-for file in simple_menu.py network_inventory.py bomb_simulation.py quick_scan.py autowifi_operator.py; do
+for file in simple_menu.py network_inventory.py lan_inventory.py bomb_simulation.py quick_scan.py autowifi_operator.py; do
   [[ -r "$SCRIPT_DIR/extensions/$file" ]] || die "Missing extensions/$file"
 done
 command -v python3 >/dev/null || die "Python 3 is missing."
@@ -43,7 +43,7 @@ from pathlib import Path
 import sys
 
 root = Path(sys.argv[1]) / "extensions"
-for name in ("simple_menu.py", "network_inventory.py", "bomb_simulation.py",
+for name in ("simple_menu.py", "network_inventory.py", "lan_inventory.py", "bomb_simulation.py",
              "quick_scan.py", "autowifi_operator.py"):
     path = root / name
     ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
@@ -72,6 +72,7 @@ SH
 }
 write_live_launcher autowifi-menu simple_menu.py
 write_live_launcher autowifi-inventory network_inventory.py
+write_live_launcher autowifi-lan lan_inventory.py
 write_live_launcher autowifi-bomb bomb_simulation.py
 
 cat > "$BIN_DIR/wifi" <<'SH'
@@ -85,8 +86,9 @@ echo
 echo "Checking installed launchers (no hardware or Wi-Fi activity):"
 "$BIN_DIR/wifi" --version
 "$BIN_DIR/autowifi-inventory" --help >/dev/null
+"$BIN_DIR/autowifi-lan" --help >/dev/null
 "$BIN_DIR/autowifi-bomb" --help >/dev/null
-echo "  Menu, inventory and BOMB launchers: PASS"
+echo "  Menu, Wi-Fi, LAN and BOMB launchers: PASS"
 revision="$(git -C "$SCRIPT_DIR" rev-parse --short HEAD 2>/dev/null || true)"
 echo
 echo "Repository: $EXPECTED_REPO"
@@ -98,5 +100,6 @@ echo
 echo "Launch: $BIN_DIR/wifi"
 echo "Network scan: $BIN_DIR/wifi scan"
 echo "Adapter checks: $BIN_DIR/wifi doctor"
+echo "Detailed home devices: $BIN_DIR/wifi devices"
 echo "Version/source check: $BIN_DIR/wifi --version"
 echo "If 'wifi' launches another program, use the full path shown above."
