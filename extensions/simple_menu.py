@@ -280,6 +280,58 @@ def adapter_settings() -> int:
             print("An in-use Wi-Fi uplink remains protected from monitor-mode changes.")
 
 
+def prefer_ralink_for_scans() -> int:
+    """Set Wi-Fi discovery to the actual USB Ralink radio, not a wlan guess.
+
+    For a single matching device, preserve AUTO-by-USB-ID so interface
+    renumbering after a reboot does not break the selection. For multiple
+    Ralink radios, require the user to select the specific interface.
+    This never changes Linux routing, antenna hardware, or DSTIKE firmware.
+    """
+    known = [radio for radio in adapters() if radio["is_ralink"]]
+    print("\n=== USE RALINK USB RADIO FOR KALI WI-FI DISCOVERY ===")
+    if not known:
+        print("No Ralink RT3070/RT2870 wireless interface is registered.")
+        print("Check that the integrated USB Wi-Fi/antenna unit is plugged in.")
+        usb = _capture(["lsusb"]).strip()
+        if usb:
+            print(usb)
+        print("No other Wi-Fi adapter was substituted.")
+        return 1
+    if len(known) == 1:
+        radio = known[0]
+        settings = load_settings()
+        # Blank selection means the radio is *re-detected* by USB vendor/product
+        # on every scan, rather than pinning an unstable wlan number.
+        settings["wireless"] = ""
+        save_settings(settings)
+        print(f"Detected: {radio['name']} ({radio['usb_id']}, {radio['mode']})")
+        print("Saved: AUTO RALINK (selected by USB hardware ID on every scan).")
+    else:
+        print("Multiple Ralink USB radios detected. Select the one you want:")
+        for n, radio in enumerate(known, 1):
+            print(f"  {n}. {radio['name']} ({radio['usb_id']}, {radio['mode']})")
+        try:
+            value = input("Radio number (Enter to cancel): ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return 1
+        if not value.isdecimal() or not 1 <= int(value) <= len(known):
+            print("Cancelled; your previous selection was not changed.")
+            return 1
+        radio = known[int(value) - 1]
+        settings = load_settings()
+        settings["wireless"] = radio["name"]
+        save_settings(settings)
+        print(f"Saved Ralink interface: {radio['name']}")
+        print("With multiple identical USB radios, reselect if the name changes.")
+    print("Applies to wifi scan, menu option 2, advanced Wi-Fi survey,")
+    print("and the Ralink scan option within the DSTIKE hardware hub.")
+    print("Does NOT apply to LAN device discovery or scans performed by DSTIKE.")
+    print("The DSTIKE ESP8266 uses its own 2.4 GHz radio.")
+    return 0
+
+
 def _write_report(data: dict, directory: Path | None = None) -> Path:
     """Store private machine-readable observations without modifying Git."""
     target = directory or REPORT_DIR
@@ -853,6 +905,7 @@ ACTIONS = {
     "status": doctor,
     "reports": recent_reports,
     "scan": nearby_wifi,
+    "ralink": prefer_ralink_for_scans,
     "monitor-scan": advanced_monitor_survey,
     "audit": connected_devices,
 }
@@ -868,6 +921,7 @@ OPTIONS = [
     ("8", "Edit BOMB networks (add / rename / delete SSIDs)", "networks"),
     ("9", "Diagnose adapters, connectivity and missing tools", "doctor"),
     ("10", "View saved LAN and Wi-Fi scan reports", "history"),
+    ("11", "Use Ralink USB antenna unit for Kali Wi-Fi scans", "ralink"),
 ]
 
 
@@ -902,7 +956,7 @@ def main(argv: list[str] | None = None) -> int:
         if selected:
             ACTIONS[selected]()
             continue
-        print("Unknown choice. Use 0-10.")
+        print("Unknown choice. Use 0-11.")
 
 
 if __name__ == "__main__":
