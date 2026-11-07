@@ -182,6 +182,56 @@ phy#0
             self.assertEqual(menu.adapter_settings(), 0)
             self.assertEqual(saved, {"lan": "", "wireless": ""})
 
+    def test_use_single_ralink_prefers_usb_id_even_if_wlan_name_changes(self):
+        saved = {"lan": "eth0", "wireless": "wlan0"}
+        radios = [
+            {"name": "wlan0", "mode": "managed", "is_ralink": False,
+             "usb_id": "not identified as USB"},
+            {"name": "wlan3", "mode": "managed", "is_ralink": True,
+             "usb_id": "148f:3070"},
+        ]
+        with patch.object(menu, "adapters", return_value=radios), \
+             patch.object(menu, "load_settings", side_effect=lambda: saved.copy()), \
+             patch.object(menu, "save_settings", side_effect=lambda x: saved.update(x)):
+            self.assertEqual(menu.prefer_ralink_for_scans(), 0)
+        self.assertEqual(saved, {"lan": "eth0", "wireless": ""})
+        # On the next boot Linux might rename wlan3 to wlan2; AUTO still
+        # selects the actual USB radio by VID/PID.
+        radios[1]["name"] = "wlan2"
+        with patch.object(menu, "adapters", return_value=radios), \
+             patch.object(menu, "load_settings", return_value=saved), \
+             patch.object(menu, "default_route", return_value="eth0"):
+            self.assertEqual(menu.choose_inventory_radio(), "wlan2")
+
+    def test_prefer_ralink_never_silently_selects_internal_radio(self):
+        radios = [{"name": "wlan0", "mode": "managed", "is_ralink": False,
+                   "usb_id": "not identified as USB"}]
+        with patch.object(menu, "adapters", return_value=radios), \
+             patch.object(menu, "_capture", return_value="USB listing"), \
+             patch.object(menu, "save_settings") as save:
+            self.assertEqual(menu.prefer_ralink_for_scans(), 1)
+            save.assert_not_called()
+
+    def test_multiple_ralink_radios_require_explicit_selection(self):
+        radios = [
+            {"name": "wlan1", "mode": "managed", "is_ralink": True,
+             "usb_id": "148f:3070"},
+            {"name": "wlan2", "mode": "monitor", "is_ralink": True,
+             "usb_id": "148f:2870"},
+        ]
+        settings = {"lan": "", "wireless": ""}
+        with patch.object(menu, "adapters", return_value=radios), \
+             patch.object(menu, "load_settings", return_value=settings), \
+             patch.object(menu, "save_settings") as save, \
+             patch("builtins.input", return_value="2"):
+            self.assertEqual(menu.prefer_ralink_for_scans(), 0)
+            save.assert_called_once_with({"lan": "", "wireless": "wlan2"})
+
+    def test_prefer_ralink_is_available_from_main_menu(self):
+        self.assertIn("ralink", menu.ACTIONS)
+        self.assertIn(("11", "Use Ralink USB antenna unit for Kali Wi-Fi scans",
+                       "ralink"), menu.OPTIONS)
+
     def test_ai_console_common_commands(self):
         spec2 = importlib.util.spec_from_file_location(
             "autowifi_operator_menu_test", BASE / "extensions/autowifi_operator.py")
@@ -199,6 +249,8 @@ phy#0
             "switch wifi adapter": ("autowifi-menu", "adapters"),
             "diagnose wifi issues": ("autowifi-menu", "doctor"),
             "show last scan results": ("autowifi-menu", "history"),
+            "networks": ("autowifi-menu", "scan"),
+            "nearby": ("autowifi-menu", "scan"),
         }
         for phrase, (command, action) in requests.items():
             with self.subTest(phrase=phrase):
