@@ -28,7 +28,7 @@ RALINK_USB_IDS = {("148f", "3070"), ("148f", "2870")}
 BIN_DIR = Path.home() / ".local" / "bin"
 REPORT_DIR = Path.home() / ".local/share/autowifi/menu-reports"
 MAX_REPORT_OUTPUT = 512_000
-MENU_VERSION = "2026.11.06.3"
+MENU_VERSION = "2026.11.07.1"
 CONFIG_PATH = Path.home() / ".config/autowifi-kali-setup/interface-selection.json"
 INTERFACE_NAME = re.compile(r"^[a-zA-Z0-9_.:-]{1,32}$")
 
@@ -908,6 +908,7 @@ ACTIONS = {
     "ralink": prefer_ralink_for_scans,
     "monitor-scan": advanced_monitor_survey,
     "audit": connected_devices,
+    "auto": lambda: _run_program("autowifi-autopilot"),
 }
 
 OPTIONS = [
@@ -922,6 +923,7 @@ OPTIONS = [
     ("9", "Diagnose adapters, connectivity and missing tools", "doctor"),
     ("10", "View saved LAN and Wi-Fi scan reports", "history"),
     ("11", "Use Ralink USB antenna unit for Kali Wi-Fi scans", "ralink"),
+    ("12", "AUTOPILOT: check hardware, scan Wi-Fi and inventory LAN", "auto"),
 ]
 
 
@@ -945,6 +947,7 @@ def main(argv: list[str] | None = None) -> int:
         for number, label, _ in OPTIONS:
             print(f"  {number}. {label}")
         print("  0. Exit")
+        print("  Tip: type 'wifi auto' for a full no-prompt diagnostic and scan.")
         try:
             choice = input("\nSelect a number: ").strip().lower()
         except (KeyboardInterrupt, EOFError):
@@ -956,7 +959,7 @@ def main(argv: list[str] | None = None) -> int:
         if selected:
             ACTIONS[selected]()
             continue
-        print("Unknown choice. Use 0-11.")
+        print("Unknown choice. Use 0-12.")
 
 
 if __name__ == "__main__":
