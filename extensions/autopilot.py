@@ -108,7 +108,7 @@ def wifi_task() -> dict:
         print(f"  FAILED: {error}", flush=True)
         report.update(state="failed", error=error)
     else:
-        report.update(state="ok", count=len(observed))
+        report.update(state="ok" if observed else "empty", count=len(observed))
         print(f"  Observed {len(observed)} access point(s).", flush=True)
         for item in observed[:30]:
             safe_ssid = re.sub(r"[\x00-\x1f\x7f-\x9f]", " ", item["ssid"])
@@ -118,6 +118,7 @@ def wifi_task() -> dict:
             print(f"  ... {len(observed) - 30} additional APs in the saved report.")
         if not observed:
             print("  No APs observed after two attempts; this is not proof none exist.")
+            print("  Result marked INCONCLUSIVE, not success.")
             print("  Check USB power, rfkill, supported bands and driver with wifi doctor.")
     snapshot = {
         "version": 1, "timestamp": datetime.now(timezone.utc).isoformat(),
