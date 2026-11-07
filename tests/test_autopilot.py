@@ -72,6 +72,21 @@ class AutopilotTests(unittest.TestCase):
         self.assertEqual(snapshot["access_points"][0]["ssid"], "my-home")
         self.assertEqual(snapshot["count"], 1)
 
+    def test_zero_aps_after_bounded_retry_is_inconclusive_not_success(self):
+        selected = {"name": "wlan2", "mode": "managed", "usb_id": "148f:3070"}
+        with patch.object(auto, "_selected_radio", return_value=(selected, "")), \
+             patch.object(auto, "_nm_state", return_value="30 (disconnected)"), \
+             patch.object(auto.shutil, "which", return_value="/usr/bin/nmcli"), \
+             patch.object(auto.wifi, "scan", return_value=([], "")) as scan, \
+             patch.object(auto.menu, "_write_report",
+                          return_value=Path("/private/wifi.json")), \
+             redirect_stdout(io.StringIO()):
+            result = auto.wifi_task()
+        self.assertEqual(result["state"], "empty")
+        self.assertEqual(result["count"], 0)
+        self.assertTrue(result["retry"])
+        self.assertEqual(scan.call_count, 2)
+
     def test_wifi_scan_failure_is_not_a_successful_zero_network_result(self):
         selected = {"name": "wlan2", "mode": "managed", "usb_id": "148f:3070"}
         with patch.object(auto, "_selected_radio", return_value=(selected, "")), \
