@@ -28,7 +28,7 @@ class LauncherIntegrationTests(unittest.TestCase):
         (self.checkout / "extensions").mkdir(parents=True)
         for name in ("simple_menu.py", "network_inventory.py",
                      "lan_inventory.py", "deauther_bridge.py",
-                     "deauther_console.py", "bomb_simulation.py", "quick_scan.py",
+                     "deauther_console.py", "autopilot.py", "bomb_simulation.py", "quick_scan.py",
                      "autowifi_operator.py"):
             shutil.copy2(SOURCE / "extensions" / name, self.checkout / "extensions" / name)
         shutil.copy2(SOURCE / "setup-menu.sh", self.checkout / "setup-menu.sh")
@@ -67,14 +67,14 @@ class LauncherIntegrationTests(unittest.TestCase):
         menu = self.bin / "wifi"
         before = self.run_cmd(str(menu), "--version")
         self.assertEqual(before.returncode, 0, before.stderr)
-        self.assertIn("2026.11.06.3", before.stdout)
+        self.assertIn("2026.11.07.1", before.stdout)
         self.assertIn(str(self.checkout / "extensions/simple_menu.py"), before.stdout)
 
         # Simulate receiving an updated Git source file. No second install.
         source = self.checkout / "extensions" / "simple_menu.py"
         contents = source.read_text()
-        self.assertIn('MENU_VERSION = "2026.11.06.3"', contents)
-        source.write_text(contents.replace('MENU_VERSION = "2026.11.06.3"',
+        self.assertIn('MENU_VERSION = "2026.11.07.1"', contents)
+        source.write_text(contents.replace('MENU_VERSION = "2026.11.07.1"',
                                            'MENU_VERSION = "TEST-FROM-GIT"'))
         after = self.run_cmd(str(menu), "--version")
         self.assertEqual(after.returncode, 0, after.stderr)
@@ -145,7 +145,7 @@ class LauncherIntegrationTests(unittest.TestCase):
         self.install()
         version = self.run_cmd(str(self.bin / "autowifi-deauther-menu"), "--version")
         self.assertEqual(version.returncode, 0, version.stdout + version.stderr)
-        self.assertIn("2026.11.06.3", version.stdout)
+        self.assertIn("2026.11.07.1", version.stdout)
         self.assertIn(str(self.checkout / "extensions/deauther_console.py"), version.stdout)
         # No device attached, but port AUTO must be usable with no sudo.
         hub = self.run_cmd(str(self.bin / "wifi"), "deauther",
@@ -159,6 +159,56 @@ class LauncherIntegrationTests(unittest.TestCase):
         self.assertEqual(json.loads(settings.read_text())["port"], "")
         cached = self.run_cmd(str(self.bin / "wifi"), "cached")
         self.assertNotIn("unrecognized arguments: cached", cached.stderr)
+
+    def test_autopilot_runs_real_launcher_with_mock_local_network(self):
+        self.install()
+        fakebin = self.home / "auto-fakebin"
+        fakebin.mkdir()
+        helper_commands = {
+            "iw": "#!/bin/sh\nprintf 'phy#1\\n  Interface wlan2\\n    type managed\\n'\n",
+            "nmcli": (
+                "#!/bin/sh\n"
+                "case \"$*\" in\n"
+                "  *GENERAL.STATE*) printf '30 (disconnected)\\n' ;;\n"
+                "  *wifi*) printf '%s\\n' 'MyHome:AA\\:BB\\:CC\\:DD\\:EE\\:01:6:2437 MHz:87:WPA2' ;;\n"
+                "esac\n"
+            ),
+            "ip": (
+                "#!/bin/sh\n"
+                "case \"$*\" in\n"
+                "  *addr*) printf '%s\\n' '[{\"ifname\":\"eth0\",\"operstate\":\"UP\",\"addr_info\":[{\"family\":\"inet\",\"scope\":\"global\",\"local\":\"192.168.7.3\",\"prefixlen\":24}]}]' ;;\n"
+                "  *route*) printf '%s\\n' '[{\"dev\":\"eth0\"}]' ;;\n"
+                "  *neigh*) printf '%s\\n' '[]' ;;\n"
+                "esac\n"
+            ),
+            "nmap": (
+                "#!/bin/sh\n"
+                "printf '%s\\n' '<nmaprun>' "
+                "'<host><status state=\"up\"/><address addr=\"192.168.7.1\" addrtype=\"ipv4\"/><hostnames><hostname name=\"gateway.local\"/></hostnames></host>' "
+                "'<host><status state=\"up\"/><address addr=\"192.168.7.55\" addrtype=\"ipv4\"/><hostnames><hostname name=\"laserjet.local\"/></hostnames></host>' "
+                "'</nmaprun>'\n"
+            ),
+        }
+        for name, script in helper_commands.items():
+            executable = fakebin / name
+            executable.write_text(script)
+            executable.chmod(0o755)
+        self.env["PATH"] = str(fakebin) + os.pathsep + self.env.get("PATH", "")
+        config = self.home / ".config/autowifi-kali-setup/interface-selection.json"
+        config.parent.mkdir(parents=True, exist_ok=True)
+        config.write_text(json.dumps({"version": 1, "lan": "eth0", "wireless": "wlan2"}))
+        result = self.run_cmd(str(self.bin / "wifi"), "auto")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("[1/3] WI-FI DISCOVERY", result.stdout)
+        self.assertIn("Observed 1 access point(s)", result.stdout)
+        self.assertIn("MyHome", result.stdout)
+        self.assertIn("Devices: 2", result.stdout)
+        self.assertIn("DSTIKE ESP8266", result.stdout)
+        wifi_reports = list((self.home / ".local/share/autowifi/menu-reports").glob("*.json"))
+        self.assertEqual(len(wifi_reports), 2)
+        summary_reports = list((self.home / ".local/share/autowifi/autopilot").glob("*.json"))
+        self.assertEqual(len(summary_reports), 1)
+        self.assertEqual(summary_reports[0].stat().st_mode & 0o777, 0o600)
 
     def test_bomb_home_ssid_editor_and_simulation_survive_install(self):
         self.install()
