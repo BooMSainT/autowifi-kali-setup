@@ -27,7 +27,8 @@ class LauncherIntegrationTests(unittest.TestCase):
         self.checkout = self.home / "autowifi-kali-setup"
         (self.checkout / "extensions").mkdir(parents=True)
         for name in ("simple_menu.py", "network_inventory.py",
-                     "lan_inventory.py", "bomb_simulation.py", "quick_scan.py",
+                     "lan_inventory.py", "deauther_bridge.py",
+                     "deauther_console.py", "bomb_simulation.py", "quick_scan.py",
                      "autowifi_operator.py"):
             shutil.copy2(SOURCE / "extensions" / name, self.checkout / "extensions" / name)
         shutil.copy2(SOURCE / "setup-menu.sh", self.checkout / "setup-menu.sh")
@@ -66,14 +67,14 @@ class LauncherIntegrationTests(unittest.TestCase):
         menu = self.bin / "wifi"
         before = self.run_cmd(str(menu), "--version")
         self.assertEqual(before.returncode, 0, before.stderr)
-        self.assertIn("2026.11.06.2", before.stdout)
+        self.assertIn("2026.11.06.3", before.stdout)
         self.assertIn(str(self.checkout / "extensions/simple_menu.py"), before.stdout)
 
         # Simulate receiving an updated Git source file. No second install.
         source = self.checkout / "extensions" / "simple_menu.py"
         contents = source.read_text()
-        self.assertIn('MENU_VERSION = "2026.11.06.2"', contents)
-        source.write_text(contents.replace('MENU_VERSION = "2026.11.06.2"',
+        self.assertIn('MENU_VERSION = "2026.11.06.3"', contents)
+        source.write_text(contents.replace('MENU_VERSION = "2026.11.06.3"',
                                            'MENU_VERSION = "TEST-FROM-GIT"'))
         after = self.run_cmd(str(menu), "--version")
         self.assertEqual(after.returncode, 0, after.stderr)
@@ -139,6 +140,25 @@ class LauncherIntegrationTests(unittest.TestCase):
         data = json.loads(reports[0].read_text())
         self.assertEqual(data["count"], 2)
         self.assertEqual(data["kind"], "lan")
+
+    def test_dstike_live_hub_and_saved_port_selection(self):
+        self.install()
+        version = self.run_cmd(str(self.bin / "autowifi-deauther-menu"), "--version")
+        self.assertEqual(version.returncode, 0, version.stdout + version.stderr)
+        self.assertIn("2026.11.06.3", version.stdout)
+        self.assertIn(str(self.checkout / "extensions/deauther_console.py"), version.stdout)
+        # No device attached, but port AUTO must be usable with no sudo.
+        hub = self.run_cmd(str(self.bin / "wifi"), "deauther",
+                           input_text="2\n0\n0\n")
+        self.assertEqual(hub.returncode, 0, hub.stdout + hub.stderr)
+        self.assertIn("DSTIKE ESP8266 / RALINK", hub.stdout)
+        settings = self.home / ".config/autowifi-kali-setup/dstike-port.json"
+        self.assertEqual(json.loads(settings.read_text())["port"], "")
+        self.assertEqual(settings.stat().st_mode & 0o777, 0o600)
+        self.install()
+        self.assertEqual(json.loads(settings.read_text())["port"], "")
+        cached = self.run_cmd(str(self.bin / "wifi"), "cached")
+        self.assertNotIn("unrecognized arguments: cached", cached.stderr)
 
     def test_bomb_home_ssid_editor_and_simulation_survive_install(self):
         self.install()
