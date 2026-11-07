@@ -4,6 +4,48 @@ Installs a local `~/AutoWIFI` checkout with pipx and adds an optional local AI o
 
 Use AutoWIFI only on networks you own or have explicit permission to test.
 
+## Use the high-gain Ralink USB unit for Kali Wi-Fi discovery
+
+Some high-gain USB Wi-Fi products have an **integrated antenna** rather than
+an antenna that can be unscrewed. The USB assembly contains its own Wi-Fi
+radio. Its advertised gain (for example around 19 dBi) is not proof of
+actual gain, supported bands, or that DSTIKE can use it.
+
+In the updated AutoWIFI menu choose **11 — Use Ralink USB antenna unit for
+Kali Wi-Fi scans**, or enter:
+
+```bash
+wifi ralink
+```
+
+AutoWIFI identifies a registered Ralink RT3070/RT2870 USB Wi-Fi radio by
+its real hardware ID (148f:3070 or 148f:2870); it does **not** guess
+`wlan1`/`wlan2`. If exactly one matching USB radio is present,
+the preference is saved as **AUTO RALINK**, re-detecting it after reboot
+even when the interface number changes. Multiple matching radios require
+explicit selection; no matching radio returns an error and **never
+silently switches to the internal adapter**.
+
+This selection is respected by the ordinary `wifi scan` command,
+menu option 2, the explicit advanced monitor-mode survey, and the separate
+Ralink scan from the DSTIKE hardware hub. Plain `networks` or
+`nearby` requests in AutoWIFI's console are routed to the same
+menu Wi-Fi scanner. Users can still manually select a different radio
+under option 3 when needed.
+
+**Hardware limitation:** This sets the radio used for **Kali Wi-Fi
+discovery**, not the Linux Ethernet/LAN device list and not scans performed
+by DSTIKE firmware. The ESP8266 board has its **own** Wi-Fi hardware and
+cannot borrow the entire separate USB Ralink radio or its physically
+integrated high-gain antenna via serial commands. The RT3070 itself is
+a 2.4 GHz radio and cannot see 5 GHz/6 GHz Wi-Fi networks.
+
+One-time update from the correct project checkout:
+
+```bash
+cd ~/autowifi-kali-setup && git pull --ff-only && bash setup-menu.sh && ~/.local/bin/wifi ralink
+```
+
 ## DSTIKE + Ralink Hardware Hub (menu option 4)
 
 The DSTIKE **ESP8266 Deauther** and Kali's **Ralink RT3070 USB Wi-Fi
