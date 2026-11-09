@@ -242,12 +242,28 @@ def monitor_cycle(state: dict) -> tuple[dict, list[dict]]:
         lan_result = {"state": "failed", "error": str(exc)}
     if lan_result.get("state") == "ok" and isinstance(lan_result.get("devices"), list):
         seen = _lan_map(lan_result["devices"])
-        base, pending, changes = _confirm_changes(
-            state.get("baseline_lan"), state.get("pending_lan", {}),
-            seen, "lan",
-        )
-        state["baseline_lan"], state["pending_lan"] = base, pending
-        events += changes
+        scope = str(lan_result.get("subnet") or "")
+        if state.get("scope_lan") and scope and scope != state["scope_lan"]:
+            # A new local subnet is not evidence that every device on the
+            # previous network disappeared. Establish a new clean baseline.
+            print(f"  LAN subnet changed from {state['scope_lan']} to {scope}. "
+                  "Building a new baseline, not declaring devices missing.")
+            state["baseline_lan"], state["pending_lan"] = None, {}
+        if scope:
+            state["scope_lan"] = scope
+        if not seen and state.get("baseline_lan"):
+            state["last_error"]["lan"] = (
+                "No responsive LAN hosts; treating as inconclusive to avoid "
+                "false mass-disconnection alerts"
+            )
+            print("  LAN discovery returned zero hosts. Baseline kept; no mass alert.")
+        else:
+            base, pending, changes = _confirm_changes(
+                state.get("baseline_lan"), state.get("pending_lan", {}),
+                seen, "lan",
+            )
+            state["baseline_lan"], state["pending_lan"] = base, pending
+            events += changes
     else:
         state["last_error"]["lan"] = lan_result.get("error") or "No reliable LAN observation"
         print("  LAN status inconclusive; previous devices were NOT marked missing.")
@@ -259,6 +275,12 @@ def monitor_cycle(state: dict) -> tuple[dict, list[dict]]:
     names, config_error = _owned_ssids()
     if config_error:
         state["last_error"]["saved_ssids"] = config_error
+    if state.get("baseline_wifi") is not None and not config_error:
+        # Removing a saved home SSID is a configuration change, not an outage.
+        state["baseline_wifi"] = {
+            key: value for key, value in state["baseline_wifi"].items()
+            if key in names
+        }
     if (wifi_result.get("state") == "ok" and
             isinstance(wifi_result.get("observations"), list) and
             not config_error and names):
