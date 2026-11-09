@@ -237,7 +237,7 @@ def monitor_cycle(state: dict) -> tuple[dict, list[dict]]:
 
     # LAN must be the authoritative source for devices on your router.
     try:
-        lan_result = autopilot.lan_task()
+        lan_result = autopilot.lan_task(save_report=False)
     except (ValueError, RuntimeError, OSError) as exc:
         lan_result = {"state": "failed", "error": str(exc)}
     if lan_result.get("state") == "ok" and isinstance(lan_result.get("devices"), list):
@@ -269,7 +269,7 @@ def monitor_cycle(state: dict) -> tuple[dict, list[dict]]:
         print("  LAN status inconclusive; previous devices were NOT marked missing.")
 
     try:
-        wifi_result = autopilot.wifi_task()
+        wifi_result = autopilot.wifi_task(save_report=False)
     except (ValueError, RuntimeError, OSError) as exc:
         wifi_result = {"state": "failed", "error": str(exc)}
     names, config_error = _owned_ssids()
@@ -350,7 +350,7 @@ def watch(interval: int = DEFAULT_INTERVAL, *,
         except BlockingIOError:
             print("AutoWIFI monitor is already running. Use 'wifi auto status'.")
             return 1
-        state = _read_state()
+        state = _read_state(STATE_FILE)
         print(f"AutoWIFI CONTINUOUS MONITOR | every {interval} seconds")
         print("Home LAN changes, saved home SSIDs, and periodic DSTIKE checks.")
         print("Alerts require 2 consecutive successful observations.")
@@ -363,7 +363,7 @@ def watch(interval: int = DEFAULT_INTERVAL, *,
                     state, events = monitor_cycle(state)
                     # Durable state before notifications; log only confirmed changes.
                     for event in events:
-                        _append_event(event)
+                        _append_event(event, EVENT_FILE)
                     _atomic_json(STATE_FILE, state)
                     for event in events:
                         _notify(event)
@@ -419,7 +419,7 @@ def service_control(action: str) -> int:
     if action == "status":
         print(f"AutoWIFI background monitor: {status or 'not installed'}")
         try:
-            state = _read_state()
+            state = _read_state(STATE_FILE)
             print(f"Last completed pass: {state.get('last_cycle') or 'none'}")
             print(f"Last confirmed changes: {state.get('last_event_count', 0)}")
             print(f"Most recent errors: {state.get('last_error') or 'none'}")
