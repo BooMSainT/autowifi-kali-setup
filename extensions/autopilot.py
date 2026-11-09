@@ -93,12 +93,10 @@ def wifi_task() -> dict:
 
     state = _nm_state(name)
     print(f"  NetworkManager state: {state}", flush=True)
-    if re.search(r"unmanaged|unavailable", state, re.I):
-        error = (f"NetworkManager reports {state!r} for {name}. "
-                 "Check wifi doctor; no changes made to your network settings.")
-        print(f"  BLOCKED: {error}", flush=True)
-        report.update(state="blocked", error=error)
-        return report
+    if re.search(r"unmanaged|unavailable|unknown", state, re.I):
+        print(f"  NetworkManager isn't controlling {name} ({state}).", flush=True)
+        print("  Trying the independent kernel Wi-Fi scanner without changing radio mode.",
+              flush=True)
 
     observed, error = wifi.scan(name)
     if not error and not observed:
@@ -126,7 +124,7 @@ def wifi_task() -> dict:
         "version": 1, "timestamp": datetime.now(timezone.utc).isoformat(),
         "kind": "wifi", "interface": name, "command_name": "wifi auto",
         "arguments": ["managed Wi-Fi discovery", "one retry if empty"],
-        "exit_code": 0 if not error else 1,
+        "exit_code": 0 if not error and observed else 1,
         "count": report["count"],
         "access_points": [{
             "ssid": ap["ssid"], "bssid": ap["bssid"],
