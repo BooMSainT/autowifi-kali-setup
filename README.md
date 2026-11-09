@@ -5,9 +5,79 @@ Installs a local `~/AutoWIFI` checkout with pipx and adds an optional local AI o
 Use AutoWIFI only on networks you own or have explicit permission to test.
 
 
+## Continuous home-network monitoring and scan fallback
+
+**AutoWIFI Autopilot now monitors continuously** instead of exiting after one
+inspection. It checks the directly connected **private home LAN** and the
+selected Wi-Fi radio every **5 minutes** by default, then checks the DSTIKE
+serial status periodically. Discovery uses existing saved interface preferences.
+
+Start a background user service (no terminal needs to remain open):
+
+```bash
+wifi auto start
+```
+
+Control and review it with the same short command:
+
+```bash
+wifi auto status
+wifi auto events
+wifi auto stop
+wifi auto once
+```
+
+Or type `wifi auto` / choose **menu option 12** to monitor in the
+**foreground** until Ctrl+C. Optional manual intervals are limited to
+300–3600 seconds: `wifi auto watch --interval 600`. The background
+service is a per-user systemd service, only enabled when explicitly started.
+It normally runs while your user service manager is active; logging out,
+suspending the laptop or powering it off can stop monitoring. The installer
+does **not** turn it on automatically. This is **periodic observation**, not
+continuous packet interception.
+
+Monitored changes include **new responsive LAN devices, missing devices,
+IP-address changes**, and advertised security or channel changes on **SSIDs
+you explicitly saved** as your own using `wifi networks`. A first
+healthy pass establishes the baseline; two consecutive healthy observations
+are required before an alert. Missing a device in a scan means **not seen**,
+not proof that the device is disconnected. A completely empty scan, a broken
+driver, changed private-LAN subnet, or failed Wi-Fi scan does not generate
+a mass-offline alert.
+
+Confirmed changes are recorded privately in:
+`~/.local/state/autowifi/monitor/events.jsonl`, with latest state
+in `state.json` (private directory 0700; files 0600). Desktop alerts
+use `notify-send` if the active desktop session supports it.
+The background monitor stores lightweight state and events rather than
+creating full scanner reports every 5 minutes. `wifi auto once`
+still writes the full reports for a manual inspection.
+
+**Improved nearby Wi-Fi scans:** the standard `wifi scan` and
+Autopilot use NetworkManager (`nmcli`) when possible. When it
+fails or identifies zero/one access point, AutoWIFI also attempts a normal
+kernel `iw dev <interface> scan`, merging real observations by BSSID.
+The kernel scan supports some Wi-Fi radios that NetworkManager does not manage.
+A foreground scan may prompt for sudo only when the kernel reports insufficient
+privileges; the background service never requests a password. Neither
+scanner changes the Wi-Fi radio into monitor mode, sends deauthentication
+frames, or scans unrelated Internet networks. If neither method works,
+the error says so instead of claiming that no networks exist. An RT3070
+remains physically limited to 2.4 GHz, regardless of software.
+
+Update once:
+
+```bash
+cd ~/autowifi-kali-setup && git pull --ff-only && bash setup-menu.sh && ~/.local/bin/wifi auto start
+```
+
+GitHub tests use simulated responses; check `wifi auto status` and
+`wifi doctor` on your own Kali laptop to verify actual radio
+and DSTIKE connectivity.
+
 ## AUTOPILOT — one command, minimal input
 
-`wifi auto` runs a **safe, evidence-based health check and inventory** from
+`wifi auto once` runs a **safe, evidence-based health check and inventory** from
 the configured hardware without asking which menus to open. It:
 
 1. Detects the saved Wi-Fi adapter, or **exactly one real Ralink RT3070/RT2870**
@@ -27,13 +97,13 @@ the configured hardware without asking which menus to open. It:
    with a timestamped private JSON report.
 
 The **interactive menu remains available** by typing `wifi`, and now also
-has **option 12 AUTOPILOT**. To run it without answering prompts:
+has **option 12 AUTOPILOT**. To run its one-time version without answering prompts:
 
 ```bash
-cd ~/autowifi-kali-setup && git pull --ff-only && bash setup-menu.sh && ~/.local/bin/wifi auto
+cd ~/autowifi-kali-setup && git pull --ff-only && bash setup-menu.sh && ~/.local/bin/wifi auto once
 ```
 
-After this one-time launcher installation, run only `wifi auto`. It
+After this one-time launcher installation, run `wifi auto once` for an individual check, or `wifi auto start` to monitor repeatedly. It
 reuses your saved adapter configuration and home-network names, but does
 not automatically mark neighboring SSIDs as yours. It doesn't use AI to
 invent devices, network identities, or success claims. LAN inventory is

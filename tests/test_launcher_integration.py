@@ -28,7 +28,7 @@ class LauncherIntegrationTests(unittest.TestCase):
         (self.checkout / "extensions").mkdir(parents=True)
         for name in ("simple_menu.py", "network_inventory.py",
                      "lan_inventory.py", "deauther_bridge.py",
-                     "deauther_console.py", "autopilot.py", "bomb_simulation.py", "quick_scan.py",
+                     "deauther_console.py", "autopilot.py", "network_watch.py", "bomb_simulation.py", "quick_scan.py",
                      "autowifi_operator.py"):
             shutil.copy2(SOURCE / "extensions" / name, self.checkout / "extensions" / name)
         shutil.copy2(SOURCE / "setup-menu.sh", self.checkout / "setup-menu.sh")
@@ -67,14 +67,14 @@ class LauncherIntegrationTests(unittest.TestCase):
         menu = self.bin / "wifi"
         before = self.run_cmd(str(menu), "--version")
         self.assertEqual(before.returncode, 0, before.stderr)
-        self.assertIn("2026.11.07.1", before.stdout)
+        self.assertIn("2026.11.09.1", before.stdout)
         self.assertIn(str(self.checkout / "extensions/simple_menu.py"), before.stdout)
 
         # Simulate receiving an updated Git source file. No second install.
         source = self.checkout / "extensions" / "simple_menu.py"
         contents = source.read_text()
-        self.assertIn('MENU_VERSION = "2026.11.07.1"', contents)
-        source.write_text(contents.replace('MENU_VERSION = "2026.11.07.1"',
+        self.assertIn('MENU_VERSION = "2026.11.09.1"', contents)
+        source.write_text(contents.replace('MENU_VERSION = "2026.11.09.1"',
                                            'MENU_VERSION = "TEST-FROM-GIT"'))
         after = self.run_cmd(str(menu), "--version")
         self.assertEqual(after.returncode, 0, after.stderr)
@@ -104,6 +104,47 @@ class LauncherIntegrationTests(unittest.TestCase):
         self.assertIn("Access points detected: 2", result.stdout)
         self.assertIn("Home", result.stdout)
         self.assertIn("Guest", result.stdout)
+
+    def test_installed_wifi_scan_falls_back_to_kernel_if_nm_unmanaged(self):
+        self.install()
+        fakebin = self.home / "fake-wifi-fallback"
+        fakebin.mkdir()
+        nmcli = fakebin / "nmcli"
+        nmcli.write_text(
+            "#!/bin/sh\n"
+            "echo 'Device wlan2 is unmanaged' >&2\n"
+            "exit 10\n"
+        )
+        nmcli.chmod(0o755)
+        iw = fakebin / "iw"
+        iw.write_text(
+            "#!/bin/sh\n"
+            "printf '%s\\n' "
+            "'BSS AA:BB:CC:DD:EE:01(on wlan2)' "
+            "'  freq: 2412' "
+            "'  signal: -51.00 dBm' "
+            "'  capability: ESS Privacy' "
+            "'  SSID: MyHomeWifi' "
+            "'  RSN:' "
+            "'    * Authentication suites: PSK' "
+            "'BSS AA:BB:CC:DD:EE:02(on wlan2)' "
+            "'  freq: 2462' "
+            "'  signal: -68.00 dBm' "
+            "'  capability: ESS Privacy' "
+            "'  SSID: MyGuestWifi' "
+            "'  RSN:' "
+            "'    * Authentication suites: SAE'\n"
+        )
+        iw.chmod(0o755)
+        self.env["PATH"] = str(fakebin) + os.pathsep + self.env.get("PATH", "")
+        result = self.run_cmd(
+            str(self.bin / "autowifi-inventory"), "--interface", "wlan2"
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("Access points detected: 2", result.stdout)
+        self.assertIn("MyHomeWifi", result.stdout)
+        self.assertIn("MyGuestWifi", result.stdout)
+        self.assertIn("WPA3", result.stdout)
 
     def test_installed_lan_inventory_on_mock_home_network(self):
         self.install()
@@ -160,6 +201,26 @@ class LauncherIntegrationTests(unittest.TestCase):
         cached = self.run_cmd(str(self.bin / "wifi"), "cached")
         self.assertNotIn("unrecognized arguments: cached", cached.stderr)
 
+    def test_monitor_service_installed_but_not_automatically_enabled(self):
+        self.install()
+        unit = self.home / ".config/systemd/user/autowifi-monitor.service"
+        self.assertTrue(unit.is_file())
+        source = unit.read_text()
+        self.assertIn("autowifi-autopilot watch --interval 300", source)
+        self.assertIn("NoNewPrivileges=true", source)
+        self.assertNotIn("ExecStart=/usr/bin/sudo", source)
+        version = self.run_cmd(str(self.bin / "wifi"), "auto", "status")
+        self.assertEqual(version.returncode, 0, version.stdout + version.stderr)
+        self.assertIn("AutoWIFI background monitor", version.stdout)
+        self.assertFalse(list((self.home / ".local/state/autowifi/monitor").glob("events.jsonl")))
+
+    def test_continuous_monitor_has_foreground_and_bounded_interval(self):
+        self.install()
+        invalid = self.run_cmd(str(self.bin / "wifi"), "auto",
+                               "watch", "--interval", "10")
+        self.assertNotEqual(invalid.returncode, 0)
+        self.assertIn("--interval must be 300 to 3600 seconds", invalid.stderr)
+
     def test_autopilot_runs_real_launcher_with_mock_local_network(self):
         self.install()
         fakebin = self.home / "auto-fakebin"
@@ -197,7 +258,7 @@ class LauncherIntegrationTests(unittest.TestCase):
         config = self.home / ".config/autowifi-kali-setup/interface-selection.json"
         config.parent.mkdir(parents=True, exist_ok=True)
         config.write_text(json.dumps({"version": 1, "lan": "eth0", "wireless": "wlan2"}))
-        result = self.run_cmd(str(self.bin / "wifi"), "auto")
+        result = self.run_cmd(str(self.bin / "wifi"), "auto", "once")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("[1/3] WI-FI DISCOVERY", result.stdout)
         self.assertIn("Observed 1 access point(s)", result.stdout)

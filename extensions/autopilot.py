@@ -23,7 +23,7 @@ import network_inventory as wifi
 import lan_inventory as lan
 import deauther_bridge as dstike
 
-VERSION = "2026.11.07.1"
+VERSION = "2026.11.09.1"
 RESULT_DIR = Path.home() / ".local/share/autowifi/autopilot"
 
 
@@ -72,9 +72,10 @@ def _nm_state(interface: str) -> str:
     return raw.splitlines()[0].strip() if raw else "unknown"
 
 
-def wifi_task() -> dict:
+def wifi_task(save_report: bool = True) -> dict:
     report = {"state": "not_run", "interface": None, "count": None,
-              "retry": False, "error": "", "path": None}
+              "retry": False, "error": "", "path": None,
+              "observations": None}
     print("\n[1/3] WI-FI DISCOVERY — selected USB radio", flush=True)
     selected, error = _selected_radio()
     if error:
@@ -92,12 +93,10 @@ def wifi_task() -> dict:
 
     state = _nm_state(name)
     print(f"  NetworkManager state: {state}", flush=True)
-    if re.search(r"unmanaged|unavailable", state, re.I):
-        error = (f"NetworkManager reports {state!r} for {name}. "
-                 "Check wifi doctor; no changes made to your network settings.")
-        print(f"  BLOCKED: {error}", flush=True)
-        report.update(state="blocked", error=error)
-        return report
+    if re.search(r"unmanaged|unavailable|unknown", state, re.I):
+        print(f"  NetworkManager isn't controlling {name} ({state}).", flush=True)
+        print("  Trying the independent kernel Wi-Fi scanner without changing radio mode.",
+              flush=True)
 
     observed, error = wifi.scan(name)
     if not error and not observed:
@@ -108,7 +107,8 @@ def wifi_task() -> dict:
         print(f"  FAILED: {error}", flush=True)
         report.update(state="failed", error=error)
     else:
-        report.update(state="ok" if observed else "empty", count=len(observed))
+        report.update(state="ok" if observed else "empty", count=len(observed),
+                      observations=observed)
         print(f"  Observed {len(observed)} access point(s).", flush=True)
         for item in observed[:30]:
             safe_ssid = re.sub(r"[\x00-\x1f\x7f-\x9f]", " ", item["ssid"])
@@ -124,7 +124,7 @@ def wifi_task() -> dict:
         "version": 1, "timestamp": datetime.now(timezone.utc).isoformat(),
         "kind": "wifi", "interface": name, "command_name": "wifi auto",
         "arguments": ["managed Wi-Fi discovery", "one retry if empty"],
-        "exit_code": 0 if not error else 1,
+        "exit_code": 0 if not error and observed else 1,
         "count": report["count"],
         "access_points": [{
             "ssid": ap["ssid"], "bssid": ap["bssid"],
@@ -133,17 +133,18 @@ def wifi_task() -> dict:
         } for ap in observed],
         "raw_output": wifi.format_results(name, observed, error),
     }
-    try:
-        report["path"] = str(menu._write_report(snapshot))
-        print(f"  Saved: {report['path']}")
-    except OSError as exc:
-        print(f"  Report could not be saved: {exc}")
+    if save_report:
+        try:
+            report["path"] = str(menu._write_report(snapshot))
+            print(f"  Saved: {report['path']}")
+        except OSError as exc:
+            print(f"  Report could not be saved: {exc}")
     return report
 
 
-def lan_task() -> dict:
+def lan_task(save_report: bool = True) -> dict:
     summary = {"state": "not_run", "count": None, "interface": None,
-               "error": "", "path": None}
+               "error": "", "path": None, "devices": None}
     print("\n[2/3] YOUR PRIVATE LAN — responsive devices", flush=True)
     if not shutil.which("nmap"):
         error = "nmap is missing. Install with: sudo apt install nmap"
@@ -157,9 +158,12 @@ def lan_task() -> dict:
         summary.update(
             state="ok", count=report["device_count"],
             interface=report["interface"],
+            devices=report["devices"],
+            subnet=report["subnet"],
         )
-        summary["path"] = str(lan._store(report))
-        print(f"  Saved: {summary['path']}")
+        if save_report:
+            summary["path"] = str(lan._store(report))
+            print(f"  Saved: {summary['path']}")
         if not summary["count"]:
             print("  No responsive hosts found. Check network isolation/router clients.")
     except (ValueError, RuntimeError, OSError) as exc:
@@ -234,12 +238,30 @@ def run() -> int:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "action", nargs="?", default="watch",
+        choices=("watch", "once", "start", "stop", "status", "events"),
+        help="watch (default), once, background start/stop/status, or event history",
+    )
+    parser.add_argument(
+        "--interval", type=int, default=300,
+        help="Monitoring interval in seconds (300–3600; default 300)",
+    )
     parser.add_argument("--version", action="store_true")
     args = parser.parse_args(argv)
     if args.version:
         print(f"AutoWIFI AUTOPILOT {VERSION} | source: {Path(__file__).resolve()}")
         return 0
-    return run()
+    if args.action == "once":
+        return run()
+    from network_watch import watch, service_control, show_events, MIN_INTERVAL, MAX_INTERVAL
+    if args.action == "watch":
+        if not MIN_INTERVAL <= args.interval <= MAX_INTERVAL:
+            parser.error(f"--interval must be {MIN_INTERVAL} to {MAX_INTERVAL} seconds")
+        return watch(interval=args.interval)
+    if args.action in ("start", "stop", "status"):
+        return service_control(args.action)
+    return show_events()
 
 
 if __name__ == "__main__":

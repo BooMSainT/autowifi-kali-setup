@@ -28,7 +28,7 @@ RALINK_USB_IDS = {("148f", "3070"), ("148f", "2870")}
 BIN_DIR = Path.home() / ".local" / "bin"
 REPORT_DIR = Path.home() / ".local/share/autowifi/menu-reports"
 MAX_REPORT_OUTPUT = 512_000
-MENU_VERSION = "2026.11.07.1"
+MENU_VERSION = "2026.11.09.1"
 CONFIG_PATH = Path.home() / ".config/autowifi-kali-setup/interface-selection.json"
 INTERFACE_NAME = re.compile(r"^[a-zA-Z0-9_.:-]{1,32}$")
 
@@ -923,21 +923,31 @@ OPTIONS = [
     ("9", "Diagnose adapters, connectivity and missing tools", "doctor"),
     ("10", "View saved LAN and Wi-Fi scan reports", "history"),
     ("11", "Use Ralink USB antenna unit for Kali Wi-Fi scans", "ralink"),
-    ("12", "AUTOPILOT: check hardware, scan Wi-Fi and inventory LAN", "auto"),
+    ("12", "AUTOPILOT: continuously monitor my home network", "auto"),
 ]
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Give Autopilot its own CLI parser. This preserves flag order such as
+    # 'wifi auto watch --interval 600' instead of misparsing options here.
+    command_args = list(sys.argv[1:] if argv is None else argv)
+    if command_args and command_args[0] == "auto":
+        return _run_program("autowifi-autopilot", *command_args[1:])
     parser = argparse.ArgumentParser(description="AutoWIFI simple menu and short commands")
     parser.add_argument("--version", action="store_true",
                         help="Show menu version and exact Python source path")
     parser.add_argument("action", nargs="?", default="menu",
                         choices=("menu", *ACTIONS.keys()))
+    parser.add_argument("extra", nargs="*", help="Autopilot: once/start/stop/status/events/watch")
     args = parser.parse_args(argv)
     if args.version:
         print(f"AutoWIFI Menu {MENU_VERSION}")
         print(f"Source: {Path(__file__).resolve()}")
         return 0
+    if args.action == "auto":
+        return _run_program("autowifi-autopilot", *args.extra)
+    if args.extra:
+        parser.error("Extra arguments are supported only for wifi auto")
     if args.action != "menu":
         return ACTIONS[args.action]()
     while True:
@@ -947,7 +957,7 @@ def main(argv: list[str] | None = None) -> int:
         for number, label, _ in OPTIONS:
             print(f"  {number}. {label}")
         print("  0. Exit")
-        print("  Tip: type 'wifi auto' for a full no-prompt diagnostic and scan.")
+        print("  Tip: wifi auto start | wifi auto status | wifi auto stop")
         try:
             choice = input("\nSelect a number: ").strip().lower()
         except (KeyboardInterrupt, EOFError):

@@ -47,7 +47,8 @@ class InventoryTests(unittest.TestCase):
             returncode=0, stderr="",
             stdout=r"Home:AA\:BB\:CC\:DD\:EE\:01:6:2437 MHz:79:WPA2",
         )
-        with patch.object(inventory.subprocess, "run", return_value=result) as run:
+        with patch.object(inventory.subprocess, "run", return_value=result) as run, \
+             patch.object(inventory, "_iw_scan", return_value=([], "")):
             aps, error = inventory.scan("wlan2")
         self.assertEqual(error, "")
         self.assertEqual(len(aps), 1)
@@ -60,6 +61,8 @@ class InventoryTests(unittest.TestCase):
     def test_failed_scan_is_not_reported_as_zero_networks(self):
         with patch.object(inventory.subprocess, "run", return_value=SimpleNamespace(
             returncode=10, stdout="", stderr="NetworkManager is not managing wlan2"
+        )), patch.object(inventory, "_iw_scan", return_value=(
+            [], "iw scan failed: not authorized"
         )):
             aps, error = inventory.scan("wlan2")
         self.assertEqual(aps, [])
@@ -67,6 +70,90 @@ class InventoryTests(unittest.TestCase):
         rendered = inventory.format_results("wlan2", aps, error)
         self.assertIn("unknown (scan failed)", rendered)
         self.assertNotIn("Access points detected: 0", rendered)
+
+    def test_iw_parser_detects_2_4_and_5ghz_and_security_without_guessing(self):
+        output = """BSS aa:bb:cc:dd:ee:01(on wlan2)
+    freq: 2412
+    signal: -44.00 dBm
+    capability: ESS Privacy ShortSlotTime
+    SSID: Home2G
+    DS Parameter set: channel 1
+    RSN:
+        * Authentication suites: PSK
+BSS aa:bb:cc:dd:ee:02(on wlan2)
+    freq: 5180
+    signal: -68.00 dBm
+    capability: ESS Privacy
+    SSID: MyFiveG
+    RSN:
+        * Authentication suites: SAE
+BSS aa:bb:cc:dd:ee:03(on wlan2)
+    freq: 2437
+    signal: -80.00 dBm
+    capability: ESS
+    SSID: Guest
+"""
+        rows = inventory.parse_iw_scan(output)
+        self.assertEqual(len(rows), 3)
+        self.assertEqual(rows[0]["ssid"], "Home2G")
+        self.assertEqual(rows[0]["channel"], 1)
+        self.assertEqual(rows[0]["security"], "WPA2/RSN")
+        self.assertEqual(rows[1]["channel"], 36)
+        self.assertEqual(rows[1]["security"], "WPA3")
+        self.assertEqual(rows[2]["security"], "OPEN/unknown")
+
+    def test_iw_fallback_recovers_networks_when_nm_is_unmanaged(self):
+        nm_failed = SimpleNamespace(
+            returncode=10, stdout="", stderr="Device is unmanaged"
+        )
+        iw_rows = [{
+            "ssid": "RealHome", "bssid": "AA:BB:CC:DD:EE:11",
+            "signal_percent": 74, "channel": 6,
+            "frequency": "2437 MHz", "security": "WPA2/RSN"
+        }]
+        with patch.object(inventory.subprocess, "run", return_value=nm_failed), \
+             patch.object(inventory, "_iw_scan", return_value=(iw_rows, "")) as alternate:
+            result, error = inventory.scan("wlan2")
+        self.assertEqual(error, "")
+        self.assertEqual(result, iw_rows)
+        alternate.assert_called_once_with("wlan2", timeout=45)
+
+    def test_one_nmcli_ap_plus_iw_two_aps_is_merged_by_bssid(self):
+        output = r"One:AA\:BB\:CC\:DD\:EE\:01:1:2412 MHz:60:WPA2"
+        nm = SimpleNamespace(returncode=0, stdout=output, stderr="")
+        iw_aps = [{
+            "ssid": "Two", "bssid": "AA:BB:CC:DD:EE:02",
+            "channel": 11, "frequency": "2462 MHz",
+            "signal_percent": 50, "security": "WPA2/RSN"
+        }]
+        with patch.object(inventory.subprocess, "run", return_value=nm), \
+             patch.object(inventory, "_iw_scan", return_value=(iw_aps, "")):
+            rows, error = inventory.scan("wlan2")
+        self.assertEqual(error, "")
+        self.assertEqual({x["ssid"] for x in rows}, {"One", "Two"})
+
+    def test_neither_backend_working_is_error_not_zero_networks(self):
+        with patch.object(inventory.subprocess, "run", return_value=SimpleNamespace(
+            returncode=0, stdout="", stderr=""
+        )), patch.object(inventory, "_iw_scan", return_value=(
+            [], "Operation not permitted"
+        )):
+            rows, error = inventory.scan("wlan2")
+        self.assertEqual(rows, [])
+        self.assertIn("could not verify reception", error)
+
+    def test_iw_scanner_never_changes_modes_or_sends_disruption_frames(self):
+        result = SimpleNamespace(
+            returncode=0, stderr="", stdout="BSS AA:BB:CC:DD:EE:01(on wlan2)\n"
+            "    freq: 2462\n    signal: -60.00 dBm\n    SSID: Home\n",
+        )
+        with patch.object(inventory.shutil, "which", return_value="/usr/bin/iw"), \
+             patch.object(inventory.subprocess, "run", return_value=result) as run:
+            rows, error = inventory._iw_scan("wlan2")
+        self.assertEqual(error, "")
+        self.assertEqual(len(rows), 1)
+        run.assert_called_once()
+        self.assertEqual(run.call_args.args[0], ["iw", "dev", "wlan2", "scan"])
 
     def test_report_is_compatible_with_existing_history_parser(self):
         aps = [{
