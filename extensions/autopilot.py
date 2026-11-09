@@ -72,7 +72,7 @@ def _nm_state(interface: str) -> str:
     return raw.splitlines()[0].strip() if raw else "unknown"
 
 
-def wifi_task() -> dict:
+def wifi_task(save_report: bool = True) -> dict:
     report = {"state": "not_run", "interface": None, "count": None,
               "retry": False, "error": "", "path": None,
               "observations": None}
@@ -133,15 +133,16 @@ def wifi_task() -> dict:
         } for ap in observed],
         "raw_output": wifi.format_results(name, observed, error),
     }
-    try:
-        report["path"] = str(menu._write_report(snapshot))
-        print(f"  Saved: {report['path']}")
-    except OSError as exc:
-        print(f"  Report could not be saved: {exc}")
+    if save_report:
+        try:
+            report["path"] = str(menu._write_report(snapshot))
+            print(f"  Saved: {report['path']}")
+        except OSError as exc:
+            print(f"  Report could not be saved: {exc}")
     return report
 
 
-def lan_task() -> dict:
+def lan_task(save_report: bool = True) -> dict:
     summary = {"state": "not_run", "count": None, "interface": None,
                "error": "", "path": None, "devices": None}
     print("\n[2/3] YOUR PRIVATE LAN — responsive devices", flush=True)
@@ -160,8 +161,9 @@ def lan_task() -> dict:
             devices=report["devices"],
             subnet=report["subnet"],
         )
-        summary["path"] = str(lan._store(report))
-        print(f"  Saved: {summary['path']}")
+        if save_report:
+            summary["path"] = str(lan._store(report))
+            print(f"  Saved: {summary['path']}")
         if not summary["count"]:
             print("  No responsive hosts found. Check network isolation/router clients.")
     except (ValueError, RuntimeError, OSError) as exc:
