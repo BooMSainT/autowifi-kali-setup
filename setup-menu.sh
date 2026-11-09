@@ -30,7 +30,7 @@ esac
 [[ "$branch" == "main" ]] ||
   die "Currently on Git branch '$branch', not 'main'. Run: git switch main && git pull --ff-only"
 
-for file in simple_menu.py network_inventory.py lan_inventory.py deauther_bridge.py deauther_console.py autopilot.py bomb_simulation.py quick_scan.py autowifi_operator.py; do
+for file in simple_menu.py network_inventory.py lan_inventory.py deauther_bridge.py deauther_console.py autopilot.py network_watch.py bomb_simulation.py quick_scan.py autowifi_operator.py; do
   [[ -r "$SCRIPT_DIR/extensions/$file" ]] || die "Missing extensions/$file"
 done
 command -v python3 >/dev/null || die "Python 3 is missing."
@@ -44,7 +44,8 @@ import sys
 
 root = Path(sys.argv[1]) / "extensions"
 for name in ("simple_menu.py", "network_inventory.py", "lan_inventory.py",
-             "deauther_bridge.py", "deauther_console.py", "autopilot.py", "bomb_simulation.py",
+             "deauther_bridge.py", "deauther_console.py", "autopilot.py",
+             "network_watch.py", "bomb_simulation.py",
              "quick_scan.py", "autowifi_operator.py"):
     path = root / name
     ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
@@ -86,6 +87,28 @@ exec "$HOME/.local/bin/autowifi-menu" "$@"
 SH
 chmod 0755 "$BIN_DIR/wifi"
 
+# Install a per-user systemd unit, but do NOT enable it automatically.
+# Start only when the user explicitly runs 'wifi auto start'.
+UNIT_DIR="$HOME/.config/systemd/user"
+mkdir -p "$UNIT_DIR"
+cat > "$UNIT_DIR/autowifi-monitor.service" <<'UNIT'
+[Unit]
+Description=AutoWIFI continuous home-network monitor
+Documentation=https://github.com/BooMSainT/autowifi-kali-setup
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/autowifi-autopilot watch --interval 300
+Restart=on-failure
+RestartSec=30
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target
+UNIT
+chmod 0644 "$UNIT_DIR/autowifi-monitor.service"
+
 echo
 echo "Checking installed launchers (no hardware or Wi-Fi activity):"
 "$BIN_DIR/wifi" --version
@@ -106,7 +129,11 @@ echo "Future updates: git pull --ff-only (then run wifi)"
 echo
 echo "Launch: $BIN_DIR/wifi"
 echo "Network scan: $BIN_DIR/wifi scan"
-echo "Automatic diagnostics + scan: $BIN_DIR/wifi auto"
+echo "Continuous monitor (foreground): $BIN_DIR/wifi auto"
+echo "Start background monitor: $BIN_DIR/wifi auto start"
+echo "Monitor status: $BIN_DIR/wifi auto status"
+echo "Stop background monitor: $BIN_DIR/wifi auto stop"
+echo "One-time inspection: $BIN_DIR/wifi auto once"
 echo "Pin Kali Wi-Fi discovery to the USB Ralink radio: $BIN_DIR/wifi ralink"
 echo "Adapter checks: $BIN_DIR/wifi doctor"
 echo "Detailed home devices: $BIN_DIR/wifi devices"
