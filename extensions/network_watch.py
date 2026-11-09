@@ -342,7 +342,7 @@ def watch(interval: int = DEFAULT_INTERVAL, *,
     """Loop until Ctrl+C/systemd stop. Refuse concurrent local monitors."""
     if not MIN_INTERVAL <= interval <= MAX_INTERVAL:
         raise ValueError(f"Interval must be {MIN_INTERVAL}-{MAX_INTERVAL} seconds")
-    _ensure_state_dir()
+    _ensure_state_dir(STATE_DIR)
     lockfd = os.open(LOCK_FILE, os.O_CREAT | os.O_RDWR, 0o600)
     try:
         try:
