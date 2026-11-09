@@ -928,6 +928,11 @@ OPTIONS = [
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Give Autopilot its own CLI parser. This preserves flag order such as
+    # 'wifi auto watch --interval 600' instead of misparsing options here.
+    command_args = list(sys.argv[1:] if argv is None else argv)
+    if command_args and command_args[0] == "auto":
+        return _run_program("autowifi-autopilot", *command_args[1:])
     parser = argparse.ArgumentParser(description="AutoWIFI simple menu and short commands")
     parser.add_argument("--version", action="store_true",
                         help="Show menu version and exact Python source path")
