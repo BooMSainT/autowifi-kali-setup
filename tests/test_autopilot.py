@@ -119,7 +119,8 @@ class AutopilotTests(unittest.TestCase):
         scan.assert_called_once_with("wlan2")
 
     def test_lan_scan_uses_saved_interface_and_has_bounded_timeout(self):
-        sample = {"interface": "eth0", "device_count": 2}
+        sample = {"interface": "eth0", "device_count": 2,
+                  "devices": [], "subnet": "192.168.1.0/24"}
         with patch.object(auto.shutil, "which", return_value="/usr/bin/nmap"), \
              patch.object(auto.menu, "load_settings",
                           return_value={"lan": "eth0", "wireless": ""}), \
