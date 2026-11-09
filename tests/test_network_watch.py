@@ -116,8 +116,8 @@ class MonitorTests(unittest.TestCase):
                  "pending_lan": {}, "baseline_wifi": None,
                  "pending_wifi": {}, "last_cycle": None}
         fake_auto = SimpleNamespace(
-            lan_task=lambda: {"state": "failed", "error": "nmap unavailable"},
-            wifi_task=lambda: {"state": "failed", "error": "nmcli unavailable"},
+            lan_task=lambda **kwargs: {"state": "failed", "error": "nmap unavailable"},
+            wifi_task=lambda **kwargs: {"state": "failed", "error": "nmcli unavailable"},
             dstike_task=lambda: {"state": "blocked"},
         )
         with patch.dict("sys.modules", {"autopilot": fake_auto}), \
@@ -135,8 +135,8 @@ class MonitorTests(unittest.TestCase):
                  "pending_wifi": {}, "last_cycle": None,
                  "scope_lan": "192.168.1.0/24"}
         fake_auto = SimpleNamespace(
-            lan_task=lambda: {"state": "ok", "devices": [], "subnet": "192.168.1.0/24"},
-            wifi_task=lambda: {"state": "failed", "error": "no radio"},
+            lan_task=lambda **kwargs: {"state": "ok", "devices": [], "subnet": "192.168.1.0/24"},
+            wifi_task=lambda **kwargs: {"state": "failed", "error": "no radio"},
             dstike_task=lambda: {"state": "blocked"},
         )
         with patch.dict("sys.modules", {"autopilot": fake_auto}), \
@@ -154,9 +154,9 @@ class MonitorTests(unittest.TestCase):
                  "scope_lan": "192.168.1.0/24"}
         new_hosts = [device("10.0.0.10", "AA:BB:CC:DD:EE:02")]
         fake_auto = SimpleNamespace(
-            lan_task=lambda: {"state": "ok", "devices": new_hosts,
+            lan_task=lambda **kwargs: {"state": "ok", "devices": new_hosts,
                               "subnet": "10.0.0.0/24"},
-            wifi_task=lambda: {"state": "failed", "error": "no radio"},
+            wifi_task=lambda **kwargs: {"state": "failed", "error": "no radio"},
             dstike_task=lambda: {"state": "blocked"},
         )
         with patch.dict("sys.modules", {"autopilot": fake_auto}), \
