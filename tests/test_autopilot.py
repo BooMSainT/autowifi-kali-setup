@@ -102,16 +102,21 @@ class AutopilotTests(unittest.TestCase):
         self.assertIsNone(result["count"])
         scan.assert_called_once_with("wlan2")
 
-    def test_unknown_nm_state_and_unmanaged_radio_do_not_trigger_scan(self):
+    def test_unmanaged_nm_interface_tries_independent_kernel_scan(self):
         selected = {"name": "wlan2", "mode": "managed", "usb_id": "148f:3070"}
         with patch.object(auto, "_selected_radio", return_value=(selected, "")), \
              patch.object(auto, "_nm_state", return_value="10 (unmanaged)"), \
              patch.object(auto.shutil, "which", return_value="/usr/bin/nmcli"), \
-             patch.object(auto.wifi, "scan") as scan, \
+             patch.object(auto.wifi, "scan", return_value=(
+                 [], "NetworkManager failed and iw scan is not permitted"
+             )) as scan, \
+             patch.object(auto.menu, "_write_report",
+                          return_value=Path("/private/wifi.json")), \
              redirect_stdout(io.StringIO()):
             result = auto.wifi_task()
-        self.assertEqual(result["state"], "blocked")
-        scan.assert_not_called()
+        self.assertEqual(result["state"], "failed")
+        self.assertIn("iw scan", result["error"])
+        scan.assert_called_once_with("wlan2")
 
     def test_lan_scan_uses_saved_interface_and_has_bounded_timeout(self):
         sample = {"interface": "eth0", "device_count": 2}
